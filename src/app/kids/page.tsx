@@ -3,12 +3,25 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getUserType, clearUserType, requireAuth } from "../../lib/auth";
+import { clearUserType, requireAuth } from "../../lib/auth";
 
 export default function KidsNews() {
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [newsArticles, setNewsArticles] = useState<any[]>([]);
+  const [newsArticles, setNewsArticles] = useState<Array<{
+    id: number;
+    title: string;
+    titleFurigana: string;
+    summary: string;
+    category: string;
+    categoryColor: string;
+    emoji: string;
+    readTime: string;
+    isNew: boolean;
+    hasRead: boolean;
+    content: string;
+    reactions: string[];
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
 

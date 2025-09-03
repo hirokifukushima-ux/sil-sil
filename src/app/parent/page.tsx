@@ -3,21 +3,52 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getUserType, clearUserType, isAuthenticated, requireAuth } from "../../lib/auth";
+import { clearUserType, requireAuth } from "../../lib/auth";
 
 export default function ParentDashboard() {
   const router = useRouter();
   const [newArticleUrl, setNewArticleUrl] = useState('');
   const [selectedChild, setSelectedChild] = useState('child1');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [recentArticles, setRecentArticles] = useState<any[]>([]);
-  const [childQuestions, setChildQuestions] = useState<any[]>([]);
+  const [recentArticles, setRecentArticles] = useState<Array<{
+    id: number;
+    convertedTitle: string;
+    category: string;
+    createdAt: string;
+    hasRead: boolean;
+    reactions: string[];
+    isArchived?: boolean;
+    archivedAt?: string;
+    status: string;
+    siteName?: string;
+  }>>([]);
+  const [childQuestions, setChildQuestions] = useState<Array<{
+    id: string;
+    articleId: string;
+    question: string;
+    childId: string;
+    status: string;
+    createdAt: string;
+    parentAnswer?: string;
+    articleTitle: string;
+  }>>([]);
   const [editingChild, setEditingChild] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   
   // アーカイブ関連の状態
   const [currentView, setCurrentView] = useState<'recent' | 'archived'>('recent');
-  const [archivedArticles, setArchivedArticles] = useState<any[]>([]);
+  const [archivedArticles, setArchivedArticles] = useState<Array<{
+    id: number;
+    convertedTitle: string;
+    category: string;
+    createdAt: string;
+    hasRead: boolean;
+    reactions: string[];
+    isArchived?: boolean;
+    archivedAt?: string;
+    status: string;
+    siteName?: string;
+  }>>([]);
   const [selectedArticles, setSelectedArticles] = useState<number[]>([]);
   const [isArchiveMode, setIsArchiveMode] = useState(false);
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);

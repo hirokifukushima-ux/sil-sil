@@ -90,7 +90,7 @@ async function basicFetchArticle(url: string): Promise<RawArticleData> {
     for (const pattern of articlePatterns) {
       const matches = Array.from(html.matchAll(pattern));
       if (matches.length > 0) {
-        let extractedText = matches.map(match => 
+        const extractedText = matches.map(match => 
           match[1]
             .replace(/<[^>]*>/g, '') // HTMLタグを除去
             .replace(/&[^;]+;/g, ' ') // HTMLエンティティを除去

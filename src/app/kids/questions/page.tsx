@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getUserType, requireAuth } from "../../../lib/auth";
+import { requireAuth } from "../../../lib/auth";
 
 interface Question {
   id: string;
