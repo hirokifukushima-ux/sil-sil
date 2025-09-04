@@ -357,7 +357,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
           <h2 className="text-2xl font-bold text-gray-800 mb-4">
             きじが みつからないよ
           </h2>
-          <Link href="/kids" className="bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600 transition-colors">
+          <Link href={fromParent ? "/parent" : "/kids"} className="bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600 transition-colors">
             ニュースいちらんに もどる
           </Link>
         </div>
@@ -371,10 +371,16 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
       <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Link href={fromParent ? "/parent" : "/kids"} className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors">
-              <span className="text-2xl">←</span>
-              <span className="font-bold">もどる</span>
-            </Link>
+            <div className="flex items-center space-x-4">
+              <Link href={fromParent ? "/parent" : "/kids"} className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors">
+                <span className="text-2xl">←</span>
+                <span className="font-bold">もどる</span>
+              </Link>
+              <Link href={fromParent ? "/parent" : "/kids"} className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
+                <span className="text-2xl">🏠</span>
+                <span className="font-bold text-xl">シルシル</span>
+              </Link>
+            </div>
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setShowFurigana(!showFurigana)}
@@ -582,7 +588,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         {/* ナビゲーション */}
         <div className="mt-8 flex justify-center space-x-4">
           <Link 
-            href="/kids" 
+            href={fromParent ? "/parent" : "/kids"}
             className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-full font-bold text-lg transition-all duration-300 shadow-lg transform hover:scale-105"
           >
             ニュースいちらんに もどる

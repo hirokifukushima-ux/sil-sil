@@ -98,23 +98,69 @@ export default function ParentDashboard() {
     setIsAuthorized(true);
   }, [router]);
 
-  // 最近の記事を取得
+  // 最近の記事を取得（ローカルストレージ優先）
   useEffect(() => {
     if (!isAuthorized) return;
     
     const fetchRecentArticles = async () => {
       try {
-        console.log('記事取得を開始...');
-        const response = await fetch('/api/articles/recent');
-        const result = await response.json();
+        let allArticles: Array<{
+          id: number;
+          convertedTitle: string;
+          originalTitle?: string;
+          originalUrl?: string;
+          category: string;
+          createdAt: string;
+          hasRead: boolean;
+          reactions: string[];
+          isArchived?: boolean;
+          archivedAt?: string;
+          status: string;
+          siteName?: string;
+        }> = [];
         
-        console.log('記事取得結果:', result);
-        
-        if (result.success) {
-          setRecentArticles(result.articles);
-        } else {
-          console.error('記事取得失敗:', result.error);
+        // まずローカルストレージから記事を取得
+        if (typeof window !== 'undefined') {
+          try {
+            const { getStoredArticles } = await import('@/lib/client-storage');
+            const storedArticles = getStoredArticles();
+            allArticles = storedArticles.filter(article => !article.isArchived);
+            console.log(`📱 親ページ：ローカルストレージから${allArticles.length}件の記事を取得`);
+          } catch (error) {
+            console.error('ローカルストレージ記事取得エラー:', error);
+          }
         }
+        
+        // APIからも記事を取得（フォールバック）
+        try {
+          console.log('🔄 API記事取得を開始...');
+          const response = await fetch('/api/articles/recent');
+          const result = await response.json();
+          
+          if (result.success && result.articles.length > 0) {
+            // APIの記事をローカルストレージの記事と統合
+            const apiArticles = result.articles.filter((apiArticle: {
+              id: number;
+              convertedTitle: string;
+              originalTitle?: string;
+              originalUrl?: string;
+              category: string;
+              createdAt: string;
+              hasRead: boolean;
+              reactions: string[];
+              status: string;
+            }) => 
+              !allArticles.some(stored => stored.id === apiArticle.id)
+            );
+            allArticles = [...allArticles, ...apiArticles];
+            console.log(`🔄 API記事${apiArticles.length}件を統合、総計${allArticles.length}件`);
+          }
+        } catch (apiError) {
+          console.warn('API記事取得エラー（ローカルストレージを使用）:', apiError);
+        }
+        
+        // 記事リストを更新
+        setRecentArticles(allArticles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       } catch (error) {
         console.error('最近の記事取得エラー:', error);
       }
@@ -278,15 +324,61 @@ export default function ParentDashboard() {
     router.push('/login');
   };
 
-  // アーカイブ記事を取得
+  // アーカイブ記事を取得（ローカルストレージ優先）
   const fetchArchivedArticles = async () => {
     try {
-      const response = await fetch('/api/articles/archive');
-      const result = await response.json();
+      let archivedArticles: Array<{
+        id: number;
+        convertedTitle: string;
+        originalTitle?: string;
+        originalUrl?: string;
+        category: string;
+        createdAt: string;
+        hasRead: boolean;
+        reactions: string[];
+        isArchived?: boolean;
+        archivedAt?: string;
+        status: string;
+        siteName?: string;
+      }> = [];
       
-      if (result.success) {
-        setArchivedArticles(result.articles);
+      // まずローカルストレージからアーカイブ記事を取得
+      if (typeof window !== 'undefined') {
+        try {
+          const { getStoredArticles } = await import('@/lib/client-storage');
+          const storedArticles = getStoredArticles();
+          archivedArticles = storedArticles.filter(article => article.isArchived);
+          console.log(`📱 ローカルストレージから${archivedArticles.length}件のアーカイブ記事を取得`);
+        } catch (error) {
+          console.error('ローカルストレージアーカイブ記事取得エラー:', error);
+        }
       }
+      
+      // APIからもアーカイブ記事を取得（フォールバック）
+      try {
+        const response = await fetch('/api/articles/archive');
+        const result = await response.json();
+        
+        if (result.success && result.articles.length > 0) {
+          // APIのアーカイブ記事をローカルストレージの記事と統合
+          const apiArchivedArticles = result.articles.filter((apiArticle: any) => 
+            !archivedArticles.some(stored => stored.id === apiArticle.id)
+          );
+          archivedArticles = [...archivedArticles, ...apiArchivedArticles];
+          console.log(`🔄 APIアーカイブ記事${apiArchivedArticles.length}件を統合、総計${archivedArticles.length}件`);
+        }
+      } catch (apiError) {
+        console.warn('APIアーカイブ記事取得エラー（ローカルストレージを使用）:', apiError);
+      }
+      
+      // アーカイブ日時順でソート
+      archivedArticles.sort((a, b) => {
+        const aTime = a.archivedAt ? new Date(a.archivedAt).getTime() : new Date(a.createdAt).getTime();
+        const bTime = b.archivedAt ? new Date(b.archivedAt).getTime() : new Date(b.createdAt).getTime();
+        return bTime - aTime;
+      });
+      
+      setArchivedArticles(archivedArticles);
     } catch (error) {
       console.error('アーカイブ記事取得エラー:', error);
     }
@@ -316,6 +408,28 @@ export default function ParentDashboard() {
       const result = await response.json();
       
       if (response.ok) {
+        // ローカルストレージも更新
+        if (typeof window !== 'undefined') {
+          try {
+            const { getStoredArticles, saveStoredArticles } = await import('@/lib/client-storage');
+            const storedArticles = getStoredArticles();
+            const updatedArticles = storedArticles.map(article => {
+              if (selectedArticles.includes(article.id)) {
+                return {
+                  ...article,
+                  isArchived: action === 'archive',
+                  archivedAt: action === 'archive' ? new Date().toISOString() : undefined
+                };
+              }
+              return article;
+            });
+            saveStoredArticles(updatedArticles);
+            console.log(`📱 ローカルストレージで${selectedArticles.length}件の記事を${action === 'archive' ? 'アーカイブ' : 'アーカイブ解除'}しました`);
+          } catch (error) {
+            console.error('ローカルストレージアーカイブ更新エラー:', error);
+          }
+        }
+        
         alert(`✅ ${result.message}`);
         
         // 記事リストを更新
@@ -385,9 +499,9 @@ export default function ParentDashboard() {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <Link href="/" className="flex items-center">
+            <Link href="/parent" className="flex items-center">
               <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                📰 シルシル
+                🏠 シルシル
               </span>
             </Link>
             <div className="flex items-center space-x-4">

@@ -284,8 +284,8 @@ export default function KidsNews() {
       <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center space-x-2">
-              <span className="text-2xl">📰</span>
+            <Link href="/kids" className="flex items-center space-x-2">
+              <span className="text-2xl">🏠</span>
               <span className="text-xl font-bold text-purple-600">シルシル</span>
             </Link>
             <div className="flex items-center space-x-4">

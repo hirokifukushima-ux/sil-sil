@@ -2,13 +2,29 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { isAuthenticated, getUserType } from '@/lib/auth';
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // ルートページにアクセスした場合、ログイン画面にリダイレクト
-    router.push('/login');
+    // ログイン状態を確認して適切なページにリダイレクト
+    if (typeof window !== 'undefined') {
+      if (isAuthenticated()) {
+        // ログイン済みなら適切なダッシュボードにリダイレクト
+        const userType = getUserType();
+        if (userType === 'parent') {
+          router.push('/parent');
+        } else if (userType === 'child') {
+          router.push('/kids');
+        } else {
+          router.push('/login');
+        }
+      } else {
+        // 未ログインならログイン画面へ
+        router.push('/login');
+      }
+    }
   }, [router]);
 
   // リダイレクト中の表示
