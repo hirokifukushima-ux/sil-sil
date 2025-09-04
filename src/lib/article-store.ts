@@ -156,7 +156,12 @@ export function getArticleById(id: number): StoredArticle | undefined {
 export function addReaction(articleId: number, reaction: string, childId: string): boolean {
   const article = articleStore.get(articleId);
   if (!article) {
-    return false;
+    console.log(`⚠️ 記事${articleId}が見つかりません。本番環境では正常な状況です。`);
+    return false; // 例外をスローせずにfalseを返す
+  }
+  
+  if (!article.reactions) {
+    article.reactions = [];
   }
   
   if (!article.reactions.includes(reaction)) {
