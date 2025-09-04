@@ -13,15 +13,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KnowNews - 親子ニュースアプリ",
+  title: "シルシル｜親子のコミュニケーションを深めるニュース共有アプリ",
   description: "親子のコミュニケーションを深めるニュース共有アプリ。AIが子供の年齢に合わせてニュースを分かりやすく変換します。",
-  keywords: ["親子", "ニュース", "教育", "AI", "コミュニケーション"],
-  authors: [{ name: "KnowNews Team" }],
+  keywords: ["親子", "ニュース", "教育", "AI", "コミュニケーション", "シルシル"],
+  authors: [{ name: "シルシル開発チーム" }],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "KnowNews",
+    title: "シルシル",
   },
   icons: {
     icon: [
@@ -50,7 +50,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#6366f1" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="KnowNews" />
+        <meta name="apple-mobile-web-app-title" content="シルシル" />
         <link rel="apple-touch-icon" href="/icon-152x152.png" />
       </head>
       <body

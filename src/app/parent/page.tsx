@@ -376,7 +376,7 @@ export default function ParentDashboard() {
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center">
               <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                📰 KnowNews
+                📰 シルシル
               </span>
             </Link>
             <div className="flex items-center space-x-4">

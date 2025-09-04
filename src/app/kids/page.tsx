@@ -239,7 +239,7 @@ export default function KidsNews() {
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center space-x-2">
               <span className="text-2xl">📰</span>
-              <span className="text-xl font-bold text-purple-600">KnowNews</span>
+              <span className="text-xl font-bold text-purple-600">シルシル</span>
             </Link>
             <div className="flex items-center space-x-4">
               <Link href="/kids/questions" className="flex items-center space-x-2 bg-pink-100 hover:bg-pink-200 px-4 py-2 rounded-full transition-colors">

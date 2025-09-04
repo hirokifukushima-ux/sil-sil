@@ -16,8 +16,9 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-blue-600 flex items-center justify-center">
       <div className="text-center text-white">
         <div className="text-6xl mb-4 animate-spin">🔄</div>
-        <h1 className="text-2xl font-bold">KnowNews</h1>
-        <p className="text-lg opacity-80">リダイレクト中...</p>
+        <h1 className="text-2xl font-bold">シルシル</h1>
+        <p className="text-lg opacity-80">親子のコミュニケーションを深めるニュース共有アプリ</p>
+        <p className="text-sm opacity-60 mt-2">リダイレクト中...</p>
       </div>
     </div>
   );

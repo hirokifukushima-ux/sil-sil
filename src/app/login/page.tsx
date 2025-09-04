@@ -60,9 +60,12 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-200 via-purple-200 to-pink-200 flex items-center justify-center">
       <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-8 text-center shadow-2xl max-w-md w-full mx-4">
         <div className="text-6xl mb-6">🏠</div>
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">
-          KnowNews
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          シルシル
         </h1>
+        <p className="text-sm text-gray-500 mb-6">
+          親子のコミュニケーションを深めるニュース共有アプリ
+        </p>
 
         {/* ユーザータイプ未選択時 */}
         {!selectedUserType ? (

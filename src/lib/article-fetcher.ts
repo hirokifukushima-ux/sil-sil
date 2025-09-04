@@ -52,7 +52,7 @@ async function basicFetchArticle(url: string): Promise<RawArticleData> {
     // 本番環境では適切なプロキシまたはサーバーサイド処理が必要
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; KnowNews/1.0; +https://knownews.app)'
+        'User-Agent': 'Mozilla/5.0 (compatible; シルシル/1.0; +https://sil-sil.vercel.app)'
       }
     });
     
