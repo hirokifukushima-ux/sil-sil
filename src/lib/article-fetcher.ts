@@ -48,29 +48,75 @@ export async function fetchArticleMetadata(url: string): Promise<RawArticleData>
 // 基本的なHTML解析（シンプルなフォールバック）
 async function basicFetchArticle(url: string): Promise<RawArticleData> {
   try {
+    console.log(`🔍 記事取得を開始: ${url}`);
+    
     // CORSの制限により、サーバーサイドでのみ動作
     // 本番環境では適切なプロキシまたはサーバーサイド処理が必要
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; シルシル/1.0; +https://sil-sil.vercel.app)'
+        'User-Agent': 'Mozilla/5.0 (compatible; シルシル/1.0; +https://sil-sil.vercel.app)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+        'Cache-Control': 'no-cache'
       }
     });
     
     if (!response.ok) {
+      console.warn(`⚠️ HTTP ${response.status} エラー: ${url}`);
       throw new Error(`HTTP ${response.status}`);
     }
     
     const html = await response.text();
+    console.log(`📝 HTMLデータを取得: ${html.length} 文字`);
     
-    // 基本的なメタタグ解析
-    const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-    const descMatch = html.match(/<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"']*)["\'][^>]*>/i);
-    const ogTitleMatch = html.match(/<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"']*)["\'][^>]*>/i);
-    const ogDescMatch = html.match(/<meta[^>]*property=["\']og:description["\'][^>]*content=["\']([^"']*)["\'][^>]*>/i);
-    const ogImageMatch = html.match(/<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"']*)["\'][^>]*>/i);
+    // より堅牢なメタタグ解析（様々な形式に対応）
+    const titlePatterns = [
+      /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+      /<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+      /<title[^>]*>([^<]*?)<\/title>/i,
+      /<h1[^>]*>([^<]*?)<\/h1>/i
+    ];
     
-    const title = ogTitleMatch?.[1] || titleMatch?.[1] || 'タイトルが取得できませんでした';
-    const description = ogDescMatch?.[1] || descMatch?.[1] || '';
+    const descPatterns = [
+      /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+      /<meta[^>]*name=["']description["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+      /<meta[^>]*name=["']twitter:description["'][^>]*content=["']([^"']*?)["'][^>]*>/i
+    ];
+    
+    let title = '';
+    let description = '';
+    
+    // タイトル抽出
+    for (const pattern of titlePatterns) {
+      const match = html.match(pattern);
+      if (match && match[1].trim()) {
+        title = match[1].trim();
+        console.log(`✅ タイトル取得: ${title}`);
+        break;
+      }
+    }
+    
+    // 説明文抽出  
+    for (const pattern of descPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1].trim()) {
+        description = match[1].trim();
+        console.log(`✅ 説明文取得: ${description.substring(0, 50)}...`);
+        break;
+      }
+    }
+    
+    // 画像取得
+    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*?)["'][^>]*>/i);
+    
+    if (!title) {
+      title = 'タイトルが取得できませんでした';
+      console.warn('⚠️ タイトルの取得に失敗');
+    }
+    if (!description) {
+      description = '記事の詳細情報を取得できませんでした';
+      console.warn('⚠️ 説明文の取得に失敗');
+    }
     
     // 記事本文をより詳しく抽出
     let content = description;
@@ -139,12 +185,47 @@ function extractSiteName(url: string): string {
 function getDemoArticleData(url: string): RawArticleData {
   const siteName = extractSiteName(url);
   
-  // URL に基づいてデモデータを生成
+  // URL解析して実際の記事に近いデータを生成しようと試行
+  try {
+    // URLから記事のテーマを推測
+    const urlKeywords = url.toLowerCase();
+    let title = '重要なニュース記事';
+    let content = '本記事の詳細な内容を取得できませんでしたが、重要な情報が含まれている可能性があります。';
+    
+    if (urlKeywords.includes('tech') || urlKeywords.includes('technology') || urlKeywords.includes('ai') || urlKeywords.includes('robot')) {
+      title = '最新テクノロジーに関するニュース';
+      content = '最新のテクノロジーの進歩により、私たちの生活は大きく変わろうとしています。人工知能やロボット技術の発展により、これまで不可能だったことが現実のものとなってきています。';
+    } else if (urlKeywords.includes('sports') || urlKeywords.includes('sport') || urlKeywords.includes('game')) {
+      title = 'スポーツ関連のニュース';
+      content = 'スポーツ界で注目される出来事が発生しています。選手の活躍や大会の結果など、多くの人が関心を持つニュースです。';
+    } else if (urlKeywords.includes('politics') || urlKeywords.includes('government') || urlKeywords.includes('minister')) {
+      title = '政治・行政に関するニュース';
+      content = '政治の動向や行政の重要な決定について報道されています。これらの決定は市民生活に大きな影響を与える可能性があります。';
+    } else if (urlKeywords.includes('economy') || urlKeywords.includes('business') || urlKeywords.includes('market')) {
+      title = '経済・ビジネスに関するニュース';
+      content = '経済動向や企業活動に関する重要な情報です。市場の変化や企業の戦略など、ビジネスに関心のある方に役立つ内容となっています。';
+    } else if (urlKeywords.includes('covid') || urlKeywords.includes('health') || urlKeywords.includes('medical')) {
+      title = '健康・医療に関するニュース';
+      content = '健康や医療に関する最新の情報をお届けします。多くの人の健康に関わる重要な内容が含まれています。';
+    }
+    
+    return {
+      title: title,
+      description: content.substring(0, 100),
+      content: content,
+      url: url,
+      site_name: siteName
+    };
+  } catch (error) {
+    console.error('デモデータ生成エラー:', error);
+  }
+  
+  // フォールバック用の汎用データ
   const demoData: { [key: string]: RawArticleData } = {
     'news.yahoo.co.jp': {
-      title: '最新のテクノロジーニュース',
-      description: '新しい技術の発展について詳しく解説します',
-      content: '最新のテクノロジーの進歩により、私たちの生活は大きく変わろうとしています。人工知能やロボット技術の発展により、これまで不可能だったことが現実のものとなってきています。',
+      title: 'Yahoo!ニュースの記事',
+      description: 'Yahoo!ニュースから重要な記事をお届けします',
+      content: 'Yahoo!ニュースから重要な記事をお届けします。詳細な内容については、元の記事をご確認ください。',
       url: url,
       site_name: 'Yahoo!ニュース'
     },
