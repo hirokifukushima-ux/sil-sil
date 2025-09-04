@@ -34,17 +34,64 @@ export default function KidsNews() {
     setIsAuthorized(true);
   }, [router]);
 
-  // APIから記事データを取得
+  // APIとローカルストレージから記事データを取得
   useEffect(() => {
     if (!isAuthorized) return;
     const fetchArticles = async () => {
       try {
-        const response = await fetch('/api/articles/child/child1');
-        const result = await response.json();
+        // ローカルストレージから記事を取得
+        let allArticles: Array<{
+          id: number;
+          convertedTitle: string;
+          convertedSummary: string;
+          category: string;
+          createdAt: string;
+          hasRead: boolean;
+          convertedContent: string;
+          reactions: string[];
+          isArchived?: boolean;
+        }> = [];
         
-        if (result.success) {
-          // APIデータを画面表示用に変換
-          const convertedArticles = result.articles.map((article: {
+        if (typeof window !== 'undefined') {
+          try {
+            const { getStoredArticles } = await import('@/lib/client-storage');
+            const storedArticles = getStoredArticles();
+            allArticles = storedArticles.filter(article => !article.isArchived);
+            console.log(`📱 ローカルストレージから${allArticles.length}件の記事を取得`);
+          } catch (error) {
+            console.error('ローカルストレージ取得エラー:', error);
+          }
+        }
+        
+        // APIからも記事を取得（フォールバック）
+        try {
+          const response = await fetch('/api/articles/child/child1');
+          const result = await response.json();
+          
+          if (result.success && result.articles.length > 0) {
+            // APIの記事をローカルストレージの記事と統合
+            const apiArticles = result.articles.filter((apiArticle: {
+              id: number;
+              convertedTitle: string;
+              convertedSummary: string;
+              category: string;
+              createdAt: string;
+              hasRead: boolean;
+              convertedContent: string;
+              reactions: string[];
+            }) => 
+              !allArticles.some(stored => stored.id === apiArticle.id)
+            );
+            allArticles = [...allArticles, ...apiArticles];
+            console.log(`🔄 API記事${apiArticles.length}件を統合、総計${allArticles.length}件`);
+          }
+        } catch (apiError) {
+          console.warn('API記事取得エラー（ローカルストレージを使用）:', apiError);
+        }
+        
+        if (allArticles.length > 0) {
+          // 記事データを画面表示用に変換
+          const convertedArticles = allArticles.map((article: {
             id: number;
             convertedTitle: string;
             convertedSummary: string;

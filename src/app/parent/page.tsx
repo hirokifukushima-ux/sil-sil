@@ -207,6 +207,17 @@ export default function ParentDashboard() {
         const result = await response.json();
         
         if (response.ok && result.success) {
+          // ローカルストレージに記事を保存
+          if (typeof window !== 'undefined') {
+            try {
+              const { addArticleToStorage } = await import('@/lib/client-storage');
+              addArticleToStorage(result.article);
+              console.log('📱 記事をローカルストレージに保存しました');
+            } catch (error) {
+              console.error('ローカルストレージ保存エラー:', error);
+            }
+          }
+          
           alert(`✅ 記事の変換が完了しました！\n\n変換後タイトル: ${result.article.convertedTitle}\n\n子供がニュースページで読めるようになりました！`);
           setNewArticleUrl('');
           
