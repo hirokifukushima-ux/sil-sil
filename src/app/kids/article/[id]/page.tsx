@@ -52,7 +52,33 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
 
   const fetchArticle = async (id: string) => {
     try {
-      // インメモリストアから記事を取得
+      // まずローカルストレージから記事を探す
+      if (typeof window !== 'undefined') {
+        try {
+          const { getStoredArticles } = await import('@/lib/client-storage');
+          const storedArticles = getStoredArticles();
+          const foundArticle = storedArticles.find(a => a.id.toString() === id && !a.isArchived);
+          
+          if (foundArticle) {
+            setArticle({
+              id: foundArticle.id,
+              convertedTitle: foundArticle.convertedTitle,
+              convertedContent: foundArticle.convertedContent,
+              convertedSummary: foundArticle.convertedSummary,
+              category: foundArticle.category,
+              createdAt: foundArticle.createdAt,
+              hasRead: foundArticle.hasRead
+            });
+            setLoading(false);
+            console.log(`📱 ローカルストレージから記事ID:${id}を取得`);
+            return;
+          }
+        } catch (error) {
+          console.error('ローカルストレージ記事取得エラー:', error);
+        }
+      }
+      
+      // フォールバック：APIから記事を取得
       const response = await fetch(`/api/articles/child/child1`);
       const result = await response.json();
       
@@ -76,6 +102,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
             createdAt: foundArticle.createdAt,
             hasRead: foundArticle.hasRead
           });
+          console.log(`🔄 APIから記事ID:${id}を取得`);
         }
         setLoading(false);
         return;
@@ -178,6 +205,17 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         // 成功時にリアクションを追加
         setUserReactions(prev => [...prev, reaction]);
         
+        // ローカルストレージも更新
+        if (typeof window !== 'undefined') {
+          try {
+            const { addReactionToStorage } = await import('@/lib/client-storage');
+            addReactionToStorage(parseInt(articleId), reaction);
+            console.log(`📱 ローカルストレージにリアクションを保存: ${reaction}`);
+          } catch (error) {
+            console.error('ローカルストレージリアクション更新エラー:', error);
+          }
+        }
+        
         // 成功メッセージ（より子供向けに）
         const messages = {
           good: 'わかったんだね！すごい！ 🎉',
@@ -205,9 +243,21 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
     }
   };
 
-  const handleMarkAsRead = () => {
+  const handleMarkAsRead = async () => {
     if (article) {
       setArticle({ ...article, hasRead: true });
+      
+      // ローカルストレージも更新
+      if (typeof window !== 'undefined') {
+        try {
+          const { markArticleAsRead } = await import('@/lib/client-storage');
+          markArticleAsRead(article.id);
+          console.log(`📱 ローカルストレージで記事ID:${article.id}を既読に設定`);
+        } catch (error) {
+          console.error('ローカルストレージ既読更新エラー:', error);
+        }
+      }
+      
       alert('よんだよ！すごいね！ 🎉');
     }
   };
