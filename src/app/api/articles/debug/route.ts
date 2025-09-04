@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 // デバッグ用：記事ストレージの状況を確認
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // 記事ストアを直接インポートして最新状態を取得
-    const articleStoreModule = await import('@/lib/article-store');
-    const articleStore = (global as any).articleStore || new Map();
+    await import('@/lib/article-store');
+    const articleStore = (globalThis as { articleStore?: Map<number, unknown> }).articleStore || new Map();
     
     const articles = Array.from(articleStore.values());
     const debugInfo = {

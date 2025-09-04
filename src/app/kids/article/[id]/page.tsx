@@ -22,7 +22,15 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
   const [userReactions, setUserReactions] = useState<string[]>([]);
   const [showQuestionForm, setShowQuestionForm] = useState(false);
   const [questionText, setQuestionText] = useState('');
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [questions, setQuestions] = useState<Array<{
+    id: string;
+    articleId: string;
+    question: string;
+    childId: string;
+    createdAt: string;
+    status: string;
+    parentAnswer?: string;
+  }>>([]);
   const [fromParent, setFromParent] = useState(false);
   
   // URLパラメータを取得
@@ -49,7 +57,15 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
       const result = await response.json();
       
       if (result.success) {
-        const foundArticle = result.articles.find((a: any) => a.id.toString() === id);
+        const foundArticle = result.articles.find((a: {
+          id: number;
+          convertedTitle: string;
+          convertedContent: string;
+          convertedSummary: string;
+          category: string;
+          createdAt: string;
+          hasRead: boolean;
+        }) => a.id.toString() === id);
         if (foundArticle) {
           setArticle({
             id: foundArticle.id,
@@ -123,7 +139,13 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
       
       if (result.success) {
         // 子供自身の質問のみを表示
-        const childQuestions = result.questions.filter((q: any) => q.childId === 'child1');
+        const childQuestions = result.questions.filter((q: {
+          id: string;
+          childId: string;
+          status: string;
+          createdAt: string;
+          parentAnswer?: string;
+        }) => q.childId === 'child1');
         setQuestions(childQuestions);
       }
     } catch (error) {

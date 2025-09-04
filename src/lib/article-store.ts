@@ -91,7 +91,7 @@ if (articleStore.size === 0) {
 // 既存記事にアーカイブフラグを追加（マイグレーション - 毎回実行）
 console.log('🔧 既存記事のマイグレーションをチェック中...');
 let migrationCount = 0;
-articleStore.forEach((article, id) => {
+articleStore.forEach((article) => {
   if (article.isArchived === undefined) {
     article.isArchived = false; // 既存記事はデフォルトでアクティブ
     migrationCount++;
@@ -180,7 +180,8 @@ export function markAsRead(articleId: number, childId: string): boolean {
 }
 
 // 統計情報取得（アーカイブ記事除外）
-export function getStats(childId: string): {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getStats(_childId: string): {
   totalArticles: number;
   readArticles: number;
   readingRate: number;

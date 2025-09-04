@@ -78,13 +78,13 @@ async function basicFetchArticle(url: string): Promise<RawArticleData> {
     // Yahoo!ニュースなどの一般的な記事パターンを試行
     const articlePatterns = [
       // 段落タグ内のテキスト
-      /<p[^>]*>(.*?)<\/p>/gis,
+      /<p[^>]*>(.*?)<\/p>/gi,
       // article タグ内のテキスト
-      /<article[^>]*>(.*?)<\/article>/gis,
+      /<article[^>]*>(.*?)<\/article>/gi,
       // div class="article" のようなパターン
-      /<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)<\/div>/gis,
+      /<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)<\/div>/gi,
       // main コンテンツ
-      /<main[^>]*>(.*?)<\/main>/gis
+      /<main[^>]*>(.*?)<\/main>/gi
     ];
     
     for (const pattern of articlePatterns) {

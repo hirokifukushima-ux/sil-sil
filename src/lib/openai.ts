@@ -201,10 +201,10 @@ export async function convertArticleForChild(
       console.log('📝 OpenAI APIからの生レスポンス:', response.substring(0, 200) + '...');
       
       // プレーンテキスト形式をパース
-      const titleMatch = response.match(/---TITLE---\s*(.*?)\s*---CONTENT---/s);
-      const contentMatch = response.match(/---CONTENT---\s*(.*?)\s*---SUMMARY---/s);
-      const summaryMatch = response.match(/---SUMMARY---\s*(.*?)\s*---CATEGORY---/s);
-      const categoryMatch = response.match(/---CATEGORY---\s*(.*?)$/s);
+      const titleMatch = response.match(/---TITLE---\s*([\s\S]*?)\s*---CONTENT---/);
+      const contentMatch = response.match(/---CONTENT---\s*([\s\S]*?)\s*---SUMMARY---/);
+      const summaryMatch = response.match(/---SUMMARY---\s*([\s\S]*?)\s*---CATEGORY---/);
+      const categoryMatch = response.match(/---CATEGORY---\s*([\s\S]*?)$/);
       
       const parsedResponse = {
         convertedTitle: titleMatch ? titleMatch[1].trim() : article.title,

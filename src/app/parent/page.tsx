@@ -13,6 +13,8 @@ export default function ParentDashboard() {
   const [recentArticles, setRecentArticles] = useState<Array<{
     id: number;
     convertedTitle: string;
+    originalTitle?: string;
+    originalUrl?: string;
     category: string;
     createdAt: string;
     hasRead: boolean;
@@ -30,6 +32,7 @@ export default function ParentDashboard() {
     status: string;
     createdAt: string;
     parentAnswer?: string;
+    pendingAnswer?: string;
     articleTitle: string;
   }>>([]);
   const [editingChild, setEditingChild] = useState<string | null>(null);
@@ -40,6 +43,8 @@ export default function ParentDashboard() {
   const [archivedArticles, setArchivedArticles] = useState<Array<{
     id: number;
     convertedTitle: string;
+    originalTitle?: string;
+    originalUrl?: string;
     category: string;
     createdAt: string;
     hasRead: boolean;
@@ -123,7 +128,17 @@ export default function ParentDashboard() {
     if (!isAuthorized) return;
     const fetchChildQuestions = async () => {
       try {
-        const allQuestions: any[] = [];
+        const allQuestions: Array<{
+          id: string;
+          articleId: string;
+          question: string;
+          childId: string;
+          status: string;
+          createdAt: string;
+          parentAnswer?: string;
+          pendingAnswer?: string;
+          articleTitle: string;
+        }> = [];
         
         // 各記事の質問を取得
         for (const article of recentArticles) {
@@ -131,7 +146,16 @@ export default function ParentDashboard() {
           const result = await response.json();
           
           if (result.success && result.questions.length > 0) {
-            allQuestions.push(...result.questions.map((q: any) => ({
+            allQuestions.push(...result.questions.map((q: {
+              id: string;
+              articleId: string;
+              question: string;
+              childId: string;
+              status: string;
+              createdAt: string;
+              parentAnswer?: string;
+              pendingAnswer?: string;
+            }) => ({
               ...q,
               articleTitle: article.convertedTitle || article.originalTitle
             })));

@@ -44,7 +44,16 @@ export default function KidsNews() {
         
         if (result.success) {
           // APIデータを画面表示用に変換
-          const convertedArticles = result.articles.map((article: any) => {
+          const convertedArticles = result.articles.map((article: {
+            id: number;
+            convertedTitle: string;
+            convertedSummary: string;
+            category: string;
+            createdAt: string;
+            hasRead: boolean;
+            convertedContent: string;
+            reactions: string[];
+          }) => {
             // 動的な色とemoji設定
             let categoryColor = 'bg-purple-400';
             let emoji = '📰';
@@ -98,45 +107,6 @@ export default function KidsNews() {
     fetchArticles();
   }, [isAuthorized]);
 
-  // デフォルトのサンプルデータ（APIが失敗した場合用）
-  const defaultArticles = [
-    {
-      id: 1,
-      title: "うちゅうたんさきの さいしんニュース",
-      titleFurigana: "宇宙探査機の最新ニュース",
-      summary: "あたらしいうちゅうせんが かせいに たどりつきました！かせいの いろや かたちを しらべています。",
-      category: "かがく",
-      categoryColor: "bg-blue-400",
-      emoji: "🚀",
-      readTime: "3ぷん",
-      isNew: true,
-      hasRead: false
-    },
-    {
-      id: 2,
-      title: "あたらしい きょうりゅうの かせきを はっけん",
-      titleFurigana: "新しい恐竜の化石を発見",
-      summary: "とても おおきな きょうりゅうの ほねが みつかりました。いままで みたことのない しゅるいだそうです！",
-      category: "かがく", 
-      categoryColor: "bg-blue-400",
-      emoji: "🦕",
-      readTime: "2ぷん",
-      isNew: false,
-      hasRead: true
-    },
-    {
-      id: 3,
-      title: "オリンピックの おもいで",
-      titleFurigana: "オリンピックの思い出",
-      summary: "たくさんの せんしゅが がんばって きんメダルを とりました。みんなで おうえんしました！",
-      category: "スポーツ",
-      categoryColor: "bg-green-400", 
-      emoji: "🥇",
-      readTime: "4ぷん",
-      isNew: false,
-      hasRead: false
-    }
-  ];
 
   const badges = [
     { name: "はじめての きじ", emoji: "🎉", earned: true },

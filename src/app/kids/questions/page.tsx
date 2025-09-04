@@ -53,8 +53,17 @@ export default function QuestionsPage() {
           
           if (result.success && result.questions.length > 0) {
             const childQuestions = result.questions
-              .filter((q: any) => q.childId === 'child1')
-              .map((q: any) => ({
+              .filter((q: { childId: string }) => q.childId === 'child1')
+              .map((q: {
+                id: string;
+                articleId: string;
+                question: string;
+                childId: string;
+                createdAt: string;
+                status: string;
+                parentAnswer?: string;
+                articleTitle?: string;
+              }) => ({
                 ...q,
                 articleTitle: q.articleTitle || article.convertedTitle || article.originalTitle
               }));
