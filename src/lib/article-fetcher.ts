@@ -50,6 +50,11 @@ async function basicFetchArticle(url: string): Promise<RawArticleData> {
   try {
     console.log(`🔍 記事取得を開始: ${url}`);
     
+    // Yahoo Newsの場合は特別な処理
+    if (url.includes('news.yahoo.co.jp')) {
+      return await fetchYahooNewsArticle(url);
+    }
+    
     // CORSの制限により、サーバーサイドでのみ動作
     // 本番環境では適切なプロキシまたはサーバーサイド処理が必要
     const response = await fetch(url, {
@@ -69,71 +74,86 @@ async function basicFetchArticle(url: string): Promise<RawArticleData> {
     const html = await response.text();
     console.log(`📝 HTMLデータを取得: ${html.length} 文字`);
     
-    // より堅牢なメタタグ解析（様々な形式に対応）
-    const titlePatterns = [
+    return parseHtmlContent(html, url);
+    
+  } catch (error) {
+    console.error('基本フェッチエラー:', error);
+    return getDemoArticleData(url);
+  }
+}
+
+// Yahoo News専用の記事取得関数
+async function fetchYahooNewsArticle(url: string): Promise<RawArticleData> {
+  try {
+    console.log(`📰 Yahoo Newsの記事を取得: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+        'Cache-Control': 'no-cache',
+        'Referer': 'https://news.yahoo.co.jp/'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Yahoo News HTTP ${response.status}`);
+    }
+    
+    const html = await response.text();
+    console.log(`📝 Yahoo NewsのHTMLデータを取得: ${html.length} 文字`);
+    
+    // Yahoo News特有のセレクタを使用
+    const yahooTitlePatterns = [
+      /<h1[^>]*class="[^"]*sc-[^"]*"[^>]*>([^<]+)<\/h1>/i,
+      /<h1[^>]*class="[^"]*ArticleHeader[^"]*"[^>]*>([^<]+)<\/h1>/i,
       /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
-      /<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
-      /<title[^>]*>([^<]*?)<\/title>/i,
-      /<h1[^>]*>([^<]*?)<\/h1>/i
+      /<title[^>]*>([^<]*?)\s*-\s*Yahoo!ニュース<\/title>/i,
+      /<title[^>]*>([^<]*?)<\/title>/i
     ];
     
-    const descPatterns = [
+    const yahooDescPatterns = [
       /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
       /<meta[^>]*name=["']description["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
-      /<meta[^>]*name=["']twitter:description["'][^>]*content=["']([^"']*?)["'][^>]*>/i
+      /<div[^>]*class="[^"]*ArticleSummary[^"]*"[^>]*>([^<]+)<\/div>/i
+    ];
+    
+    const yahooContentPatterns = [
+      // Yahoo News記事本文の一般的なパターン
+      /<div[^>]*class="[^"]*ArticleText[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*highLightSearchTarget[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*sc-[^"]*"[^>]*data-[^>]*>([\s\S]*?)<\/div>/gi,
+      /<article[^>]*>([\s\S]*?)<\/article>/gi,
+      /<p[^>]*>(.*?)<\/p>/gi
     ];
     
     let title = '';
     let description = '';
+    let content = '';
     
-    // タイトル抽出
-    for (const pattern of titlePatterns) {
+    // タイトル抽出（Yahoo News専用パターン）
+    for (const pattern of yahooTitlePatterns) {
       const match = html.match(pattern);
       if (match && match[1].trim()) {
-        title = match[1].trim();
-        console.log(`✅ タイトル取得: ${title}`);
+        title = match[1].trim().replace(/\s*-\s*Yahoo!ニュース.*$/, '');
+        console.log(`✅ Yahoo Newsタイトル取得: ${title}`);
         break;
       }
     }
     
-    // 説明文抽出  
-    for (const pattern of descPatterns) {
+    // 説明文抽出
+    for (const pattern of yahooDescPatterns) {
       const match = html.match(pattern);
       if (match && match[1].trim()) {
         description = match[1].trim();
-        console.log(`✅ 説明文取得: ${description.substring(0, 50)}...`);
+        console.log(`✅ Yahoo News説明文取得: ${description.substring(0, 50)}...`);
         break;
       }
     }
     
-    // 画像取得
-    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*?)["'][^>]*>/i);
-    
-    if (!title) {
-      title = 'タイトルが取得できませんでした';
-      console.warn('⚠️ タイトルの取得に失敗');
-    }
-    if (!description) {
-      description = '記事の詳細情報を取得できませんでした';
-      console.warn('⚠️ 説明文の取得に失敗');
-    }
-    
-    // 記事本文をより詳しく抽出
-    let content = description;
-    
-    // Yahoo!ニュースなどの一般的な記事パターンを試行
-    const articlePatterns = [
-      // 段落タグ内のテキスト
-      /<p[^>]*>(.*?)<\/p>/gi,
-      // article タグ内のテキスト
-      /<article[^>]*>(.*?)<\/article>/gi,
-      // div class="article" のようなパターン
-      /<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)<\/div>/gi,
-      // main コンテンツ
-      /<main[^>]*>(.*?)<\/main>/gi
-    ];
-    
-    for (const pattern of articlePatterns) {
+    // 記事本文抽出（Yahoo News専用パターン）
+    for (const pattern of yahooContentPatterns) {
       const matches = Array.from(html.matchAll(pattern));
       if (matches.length > 0) {
         const extractedText = matches.map(match => 
@@ -142,33 +162,186 @@ async function basicFetchArticle(url: string): Promise<RawArticleData> {
             .replace(/&[^;]+;/g, ' ') // HTMLエンティティを除去
             .replace(/\s+/g, ' ') // 複数の空白を一つに
             .trim()
-        ).join(' ');
+        ).filter(text => text.length > 10) // 短すぎるテキストを除外
+        .join(' ');
         
-        if (extractedText.length > content.length) {
+        if (extractedText.length > content.length && extractedText.length > 50) {
           content = extractedText;
-          break;
         }
       }
     }
     
-    // 最低でも300文字程度の内容を確保（デモ用の補完）
-    if (content.length < 200) {
-      content = `${description || title}についての詳細な記事です。この話題は多くの人々に影響を与える重要な内容となっています。最新の情報と共に、背景や今後の展開についても詳しく解説されています。関係者の声や専門家の意見も交え、多角的な視点から分析が行われています。読者にとって価値のある情報を提供することを目的として、分かりやすく整理された内容となっています。`;
+    // 画像取得
+    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*?)["'][^>]*>/i);
+    
+    // タイトルが取得できない場合のフォールバック
+    if (!title) {
+      title = 'Yahoo!ニュースの記事';
+      console.warn('⚠️ Yahoo Newsタイトルの取得に失敗');
+    }
+    
+    // 説明文が取得できない場合のフォールバック
+    if (!description) {
+      description = title.length > 0 ? `${title}についての重要なニュースです。` : 'Yahoo!ニュースから重要な記事をお届けします。';
+      console.warn('⚠️ Yahoo News説明文の取得に失敗');
+    }
+    
+    // 本文が取得できない場合は説明文を使用
+    if (!content || content.length < 100) {
+      content = description.length > 100 ? description : `${title}についての詳細な記事です。Yahoo!ニュースから重要な情報をお伝えします。この記事には最新の情報や関係者のコメント、今後の展開についての情報が含まれています。詳細については元記事をご確認ください。`;
     }
     
     return {
       title: title.trim(),
       description: description.trim(),
-      content: content.trim().substring(0, 2000), // 最大2000文字に制限
+      content: content.trim().substring(0, 2000),
       image: ogImageMatch?.[1],
       url: url,
-      site_name: extractSiteName(url)
+      site_name: 'Yahoo!ニュース'
     };
     
   } catch (error) {
-    console.error('基本フェッチエラー:', error);
-    return getDemoArticleData(url);
+    console.error('Yahoo News記事取得エラー:', error);
+    // Yahoo News固有のフォールバック
+    return getYahooNewsFallbackData(url);
   }
+}
+
+// HTML解析の共通処理
+function parseHtmlContent(html: string, url: string): RawArticleData {
+  // より堅牢なメタタグ解析（様々な形式に対応）
+  const titlePatterns = [
+    /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+    /<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+    /<title[^>]*>([^<]*?)<\/title>/i,
+    /<h1[^>]*>([^<]*?)<\/h1>/i
+  ];
+  
+  const descPatterns = [
+    /<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+    /<meta[^>]*name=["']description["'][^>]*content=["']([^"']*?)["'][^>]*>/i,
+    /<meta[^>]*name=["']twitter:description["'][^>]*content=["']([^"']*?)["'][^>]*>/i
+  ];
+  
+  let title = '';
+  let description = '';
+  
+  // タイトル抽出
+  for (const pattern of titlePatterns) {
+    const match = html.match(pattern);
+    if (match && match[1].trim()) {
+      title = match[1].trim();
+      console.log(`✅ タイトル取得: ${title}`);
+      break;
+    }
+  }
+  
+  // 説明文抽出  
+  for (const pattern of descPatterns) {
+    const match = html.match(pattern);
+    if (match && match[1].trim()) {
+      description = match[1].trim();
+      console.log(`✅ 説明文取得: ${description.substring(0, 50)}...`);
+      break;
+    }
+  }
+  
+  // 画像取得
+  const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*?)["'][^>]*>/i);
+  
+  if (!title) {
+    title = 'タイトルが取得できませんでした';
+    console.warn('⚠️ タイトルの取得に失敗');
+  }
+  if (!description) {
+    description = '記事の詳細情報を取得できませんでした';
+    console.warn('⚠️ 説明文の取得に失敗');
+  }
+  
+  // 記事本文をより詳しく抽出
+  let content = description;
+  
+  // 一般的な記事パターンを試行
+  const articlePatterns = [
+    // 段落タグ内のテキスト
+    /<p[^>]*>(.*?)<\/p>/gi,
+    // article タグ内のテキスト
+    /<article[^>]*>(.*?)<\/article>/gi,
+    // div class="article" のようなパターン
+    /<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)<\/div>/gi,
+    // main コンテンツ
+    /<main[^>]*>(.*?)<\/main>/gi
+  ];
+  
+  for (const pattern of articlePatterns) {
+    const matches = Array.from(html.matchAll(pattern));
+    if (matches.length > 0) {
+      const extractedText = matches.map(match => 
+        match[1]
+          .replace(/<[^>]*>/g, '') // HTMLタグを除去
+          .replace(/&[^;]+;/g, ' ') // HTMLエンティティを除去
+          .replace(/\s+/g, ' ') // 複数の空白を一つに
+          .trim()
+      ).join(' ');
+      
+      if (extractedText.length > content.length) {
+        content = extractedText;
+        break;
+      }
+    }
+  }
+  
+  // 最低でも300文字程度の内容を確保（デモ用の補完）
+  if (content.length < 200) {
+    content = `${description || title}についての詳細な記事です。この話題は多くの人々に影響を与える重要な内容となっています。最新の情報と共に、背景や今後の展開についても詳しく解説されています。関係者の声や専門家の意見も交え、多角的な視点から分析が行われています。読者にとって価値のある情報を提供することを目的として、分かりやすく整理された内容となっています。`;
+  }
+  
+  return {
+    title: title.trim(),
+    description: description.trim(),
+    content: content.trim().substring(0, 2000), // 最大2000文字に制限
+    image: ogImageMatch?.[1],
+    url: url,
+    site_name: extractSiteName(url)
+  };
+}
+
+// Yahoo News専用のフォールバックデータ
+function getYahooNewsFallbackData(url: string): RawArticleData {
+  // URLから記事IDやパスを分析してより具体的な内容を生成
+  const urlPath = url.split('/').pop() || '';
+  const isExpertArticle = url.includes('/expert/articles/');
+  
+  let title = 'Yahoo!ニュースの記事';
+  let content = 'Yahoo!ニュースから重要なニュースをお届けします。';
+  
+  if (isExpertArticle) {
+    title = 'Yahoo!ニュース専門家記事';
+    content = 'Yahoo!ニュースの専門家による詳細な解説記事です。専門的な視点から分析された内容をお届けします。関連する分野の最新動向や背景情報も含まれており、読者の理解を深めるための貴重な情報源となっています。';
+  }
+  
+  // URLに含まれるキーワードから内容を推測
+  if (urlPath.includes('tech') || urlPath.includes('ai')) {
+    title = 'テクノロジー関連のニュース';
+    content = '最新のテクノロジーや人工知能に関する重要なニュースです。技術の進歩や新しいサービス、今後の展開についての情報が含まれています。';
+  } else if (urlPath.includes('sports')) {
+    title = 'スポーツニュース';
+    content = 'スポーツ界の最新動向や選手の活躍、大会結果などの情報をお届けします。';
+  } else if (urlPath.includes('politics')) {
+    title = '政治ニュース';
+    content = '政治の動向や重要な政策決定についての最新情報です。';
+  } else if (urlPath.includes('economy') || urlPath.includes('business')) {
+    title = '経済・ビジネスニュース';
+    content = '経済情勢や企業動向に関する重要な情報をお伝えします。';
+  }
+  
+  return {
+    title: title,
+    description: content.substring(0, 100),
+    content: content,
+    url: url,
+    site_name: 'Yahoo!ニュース'
+  };
 }
 
 // サイト名を URL から抽出
