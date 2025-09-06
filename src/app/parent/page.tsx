@@ -361,7 +361,16 @@ export default function ParentDashboard() {
         
         if (result.success && result.articles.length > 0) {
           // APIのアーカイブ記事をローカルストレージの記事と統合
-          const apiArchivedArticles = result.articles.filter((apiArticle: any) => 
+          const apiArchivedArticles = result.articles.filter((apiArticle: {
+            id: number;
+            convertedTitle: string;
+            convertedSummary: string;
+            category: string;
+            createdAt: string;
+            hasRead: boolean;
+            convertedContent: string;
+            reactions: string[];
+          }) => 
             !archivedArticles.some(stored => stored.id === apiArticle.id)
           );
           archivedArticles = [...archivedArticles, ...apiArchivedArticles];
