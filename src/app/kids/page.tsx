@@ -56,8 +56,15 @@ export default function KidsNews() {
           try {
             const { getStoredArticles } = await import('@/lib/client-storage');
             const storedArticles = getStoredArticles();
-            allArticles = storedArticles.filter(article => !article.isArchived);
-            console.log(`📱 ローカルストレージから${allArticles.length}件の記事を取得`);
+            // アーカイブされていない記事のみ表示（undefined も含める）
+            allArticles = storedArticles.filter(article => article.isArchived !== true);
+            console.log(`📱 ローカルストレージから${allArticles.length}件の記事を取得（全${storedArticles.length}件中）`);
+            console.log('📱 記事状態詳細:', storedArticles.map(a => ({
+              id: a.id,
+              title: a.convertedTitle?.substring(0, 20),
+              hasRead: a.hasRead,
+              isArchived: a.isArchived
+            })));
           } catch (error) {
             console.error('ローカルストレージ取得エラー:', error);
           }

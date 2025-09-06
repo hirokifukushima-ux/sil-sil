@@ -57,7 +57,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         try {
           const { getStoredArticles } = await import('@/lib/client-storage');
           const storedArticles = getStoredArticles();
-          const foundArticle = storedArticles.find(a => a.id.toString() === id && !a.isArchived);
+          const foundArticle = storedArticles.find(a => a.id.toString() === id && a.isArchived !== true);
           
           if (foundArticle) {
             setArticle({
@@ -376,7 +376,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
                 <span className="text-2xl">←</span>
                 <span className="font-bold">もどる</span>
               </Link>
-              <Link href={fromParent ? "/parent" : "/kids"} className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
+              <Link href="/kids" className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
                 <span className="text-2xl">🏠</span>
                 <span className="font-bold text-xl">シルシル</span>
               </Link>
