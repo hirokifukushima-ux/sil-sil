@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchArticleMetadata, convertToArticleContent } from '@/lib/article-fetcher';
 import { convertArticleForChild } from '@/lib/openai';
-import { saveArticle } from '@/lib/article-store';
+import { getDatabase, DatabaseError } from '@/lib/database';
 
 interface ShareArticleRequest {
   url: string;
@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
       contentLength: convertedArticle.content.length
     });
     
-    // 3. インメモリストアに保存
+    // 3. 新しいデータベース抽象化層に保存
+    const db = getDatabase();
     const articleData = {
-      id: Math.floor(Date.now() + Math.random() * 1000), // 整数のID生成
       originalUrl: url,
       childAge,
       originalTitle: articleContent.title,
@@ -70,13 +70,15 @@ export async function POST(request: NextRequest) {
       convertedContent: convertedArticle.content,
       convertedSummary: convertedArticle.summary,
       category: convertedArticle.category,
-      createdAt: new Date().toISOString(),
       status: 'completed',
       siteName: rawArticleData.site_name,
-      image: rawArticleData.image
+      image: rawArticleData.image,
+      hasRead: false,
+      reactions: [],
+      isArchived: false
     };
     
-    const savedArticle = saveArticle(articleData);
+    const savedArticle = await db.createArticle(articleData);
     
     console.log('🎉 記事の変換が完了しました:', savedArticle.id);
     
@@ -94,6 +96,18 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('❌ 記事処理エラー:', error);
+    
+    // DatabaseErrorの特別処理
+    if (error instanceof DatabaseError) {
+      return NextResponse.json(
+        { 
+          error: `データベースエラー: ${error.message}`,
+          code: error.code,
+          suggestion: 'データベース接続を確認してください。'
+        },
+        { status: 500 }
+      );
+    }
     
     // エラーの詳細をログに記録
     if (error instanceof Error) {

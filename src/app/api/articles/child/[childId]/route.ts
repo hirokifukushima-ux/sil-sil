@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getArticlesByChild } from '@/lib/article-store';
+import { getDatabase, DatabaseError } from '@/lib/database';
 
 export async function GET(
   request: NextRequest,
@@ -22,8 +22,14 @@ export async function GET(
     
     console.log(`📚 子供ID ${childId} の記事を取得中...`, { category, limit });
     
-    // インメモリストアから記事を取得
-    const articles = getArticlesByChild(childId, category || undefined, limit);
+    // 新しいデータベース抽象化層から記事を取得
+    const db = getDatabase();
+    const articles = await db.getArticles({
+      userId: childId,
+      category: category || undefined,
+      isArchived: false, // アーカイブされていない記事のみ
+      limit
+    });
     
     console.log(`✅ 記事取得完了: ${articles.length}件`);
     
@@ -36,6 +42,18 @@ export async function GET(
     
   } catch (error) {
     console.error('❌ 記事取得エラー:', error);
+    
+    // DatabaseErrorの特別処理
+    if (error instanceof DatabaseError) {
+      return NextResponse.json(
+        { 
+          error: `データベースエラー: ${error.message}`,
+          code: error.code
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { error: `記事の取得中にエラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }

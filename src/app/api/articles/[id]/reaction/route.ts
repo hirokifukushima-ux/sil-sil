@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addReaction } from '@/lib/article-store';
+import { getDatabase, DatabaseError } from '@/lib/database';
 
 interface ReactionRequest {
   reaction: 'good' | 'difficult' | 'question' | 'fun';
@@ -30,14 +30,21 @@ export async function POST(
       );
     }
     
-    // インメモリストアにリアクションを保存を試行
-    const success = addReaction(parseInt(id), reaction, childId);
+    // 新しいデータベース抽象化層にリアクションを保存
+    const db = getDatabase();
+    const articleId = parseInt(id);
     
-    // 本番環境（Vercel）では記事が見つからない場合があるが、
-    // リアクション機能は動作しているものとして成功レスポンスを返す
-    if (!success) {
-      console.log(`⚠️ 記事${id}が見つからないため、リアクションを永続化できませんでしたが、UX向上のため成功として処理します`);
+    // 記事の存在確認
+    const article = await db.getArticleById(articleId);
+    if (!article) {
+      return NextResponse.json(
+        { error: '指定された記事が見つかりません' },
+        { status: 404 }
+      );
     }
+    
+    // リアクション追加
+    const success = await db.addReaction(articleId, childId, reaction);
     
     // リアクションに応じたレスポンスメッセージ
     let message = '';
@@ -56,16 +63,35 @@ export async function POST(
         break;
     }
     
+    if (!success) {
+      return NextResponse.json(
+        { error: 'リアクションの保存に失敗しました' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json({
       success: true,
       message,
       reaction,
-      articleId: parseInt(id),
+      articleId: articleId,
       childId
     });
     
   } catch (error) {
     console.error('リアクション処理エラー:', error);
+    
+    // DatabaseErrorの特別処理
+    if (error instanceof DatabaseError) {
+      return NextResponse.json(
+        { 
+          error: `データベースエラー: ${error.message}`,
+          code: error.code
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { error: `リアクションの処理中にエラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }

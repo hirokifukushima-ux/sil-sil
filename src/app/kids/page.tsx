@@ -89,6 +89,46 @@ export default function KidsNews() {
             }) => 
               !allArticles.some(stored => stored.id === apiArticle.id)
             );
+            
+            // 新しいAPI記事をローカルストレージにも保存
+            if (apiArticles.length > 0 && typeof window !== 'undefined') {
+              try {
+                const { addArticleToStorage } = await import('@/lib/client-storage');
+                apiArticles.forEach((apiArticle: {
+                  id: number;
+                  convertedTitle: string;
+                  convertedSummary: string;
+                  category: string;
+                  createdAt: string;
+                  hasRead: boolean;
+                  convertedContent: string;
+                  reactions: string[];
+                }) => {
+                  // API記事をStoredArticle形式に変換して保存
+                  const storedArticle = {
+                    id: apiArticle.id,
+                    originalUrl: `https://example.com/article-${apiArticle.id}`,
+                    childAge: 8,
+                    originalTitle: apiArticle.convertedTitle,
+                    convertedTitle: apiArticle.convertedTitle,
+                    originalContent: apiArticle.convertedContent,
+                    convertedContent: apiArticle.convertedContent,
+                    convertedSummary: apiArticle.convertedSummary,
+                    category: apiArticle.category,
+                    createdAt: apiArticle.createdAt,
+                    status: 'completed',
+                    hasRead: apiArticle.hasRead,
+                    reactions: apiArticle.reactions || [],
+                    isArchived: false
+                  };
+                  addArticleToStorage(storedArticle);
+                });
+                console.log(`💾 API記事${apiArticles.length}件をローカルストレージに保存しました`);
+              } catch (storageError) {
+                console.error('ローカルストレージ保存エラー:', storageError);
+              }
+            }
+            
             allArticles = [...allArticles, ...apiArticles];
             console.log(`🔄 API記事${apiArticles.length}件を統合、総計${allArticles.length}件`);
           }

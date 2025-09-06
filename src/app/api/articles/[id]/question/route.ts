@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getDatabase, DatabaseError } from '@/lib/database';
 
 interface QuestionRequest {
   question: string;
@@ -6,24 +7,6 @@ interface QuestionRequest {
   articleTitle?: string;
   articleSummary?: string;
 }
-
-// インメモリストレージ（質問用）
-const globalForQuestions = globalThis as unknown as {
-  questionsStore: Array<{
-    id: string;
-    articleId: string;
-    question: string;
-    childId: string;
-    articleTitle?: string;
-    articleSummary?: string;
-    createdAt: string;
-    status: 'pending' | 'answered';
-    parentAnswer?: string;
-  }> | undefined;
-};
-
-const questionsStore = globalForQuestions.questionsStore ?? [];
-globalForQuestions.questionsStore = questionsStore;
 
 export async function POST(
   request: NextRequest,
@@ -48,19 +31,25 @@ export async function POST(
       );
     }
     
-    // 質問をストアに保存
-    const newQuestion = {
-      id: Date.now().toString(),
-      articleId: id,
-      question: question.trim(),
-      childId: childId,
-      articleTitle: articleTitle,
-      articleSummary: articleSummary,
-      createdAt: new Date().toISOString(),
-      status: 'pending' as const
-    };
+    // 新しいデータベース抽象化層に質問を保存
+    const db = getDatabase();
+    const articleId = parseInt(id);
     
-    questionsStore.push(newQuestion);
+    // 記事の存在確認
+    const article = await db.getArticleById(articleId);
+    if (!article) {
+      return NextResponse.json(
+        { error: '指定された記事が見つかりません' },
+        { status: 404 }
+      );
+    }
+    
+    const newQuestion = await db.createQuestion({
+      articleId: articleId,
+      userId: childId,
+      question: question.trim(),
+      status: 'pending'
+    });
     
     console.log(`💬 質問を受信: 記事${id} -> "${question}" (子供: ${childId})`);
     
@@ -74,6 +63,18 @@ export async function POST(
     
   } catch (error) {
     console.error('質問処理エラー:', error);
+    
+    // DatabaseErrorの特別処理
+    if (error instanceof DatabaseError) {
+      return NextResponse.json(
+        { 
+          error: `データベースエラー: ${error.message}`,
+          code: error.code
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { error: `質問の処理中にエラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
@@ -88,15 +89,29 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const questions = questionsStore.filter(q => q.articleId === id);
+    const db = getDatabase();
+    const articleId = parseInt(id);
+    
+    const questions = await db.getQuestions(articleId);
     
     return NextResponse.json({
       success: true,
-      questions: questions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      questions: questions
     });
     
   } catch (error) {
     console.error('質問取得エラー:', error);
+    
+    if (error instanceof DatabaseError) {
+      return NextResponse.json(
+        { 
+          error: `データベースエラー: ${error.message}`,
+          code: error.code
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { error: '質問の取得中にエラーが発生しました' },
       { status: 500 }
@@ -121,29 +136,38 @@ export async function PUT(
       );
     }
     
-    // 該当する質問を探して更新
-    const question = questionsStore.find(q => q.id === questionId && q.articleId === id);
+    // 新しいデータベース抽象化層で質問に回答
+    const db = getDatabase();
+    const updatedQuestion = await db.answerQuestion(questionId, answer);
     
-    if (!question) {
+    if (!updatedQuestion) {
       return NextResponse.json(
         { error: '質問が見つかりません' },
         { status: 404 }
       );
     }
     
-    question.status = 'answered';
-    question.parentAnswer = answer;
-    
     console.log(`💬 質問に回答: ${questionId} -> "${answer}"`);
     
     return NextResponse.json({
       success: true,
       message: '回答を送信しました',
-      question: question
+      question: updatedQuestion
     });
     
   } catch (error) {
     console.error('回答送信エラー:', error);
+    
+    if (error instanceof DatabaseError) {
+      return NextResponse.json(
+        { 
+          error: `データベースエラー: ${error.message}`,
+          code: error.code
+        },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { error: '回答の送信中にエラーが発生しました' },
       { status: 500 }
