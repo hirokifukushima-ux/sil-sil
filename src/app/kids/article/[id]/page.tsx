@@ -11,6 +11,7 @@ interface Article {
   category: string;
   createdAt: string;
   hasRead: boolean;
+  image?: string;
 }
 
 export default function ArticleDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -54,32 +55,31 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
     try {
       // まずローカルストレージから記事を探す
       if (typeof window !== 'undefined') {
-        try {
-          const { getStoredArticles } = await import('@/lib/client-storage');
-          const storedArticles = getStoredArticles();
-          const foundArticle = storedArticles.find(a => a.id.toString() === id && a.isArchived !== true);
-          
-          if (foundArticle) {
+        const localArticles = localStorage.getItem('convertedArticles');
+        if (localArticles) {
+          const articles = JSON.parse(localArticles);
+          const foundLocalArticle = articles.find((a: any) => a.id.toString() === id);
+          if (foundLocalArticle) {
             setArticle({
-              id: foundArticle.id,
-              convertedTitle: foundArticle.convertedTitle,
-              convertedContent: foundArticle.convertedContent,
-              convertedSummary: foundArticle.convertedSummary,
-              category: foundArticle.category,
-              createdAt: foundArticle.createdAt,
-              hasRead: foundArticle.hasRead
+              id: foundLocalArticle.id,
+              convertedTitle: foundLocalArticle.convertedTitle,
+              convertedContent: foundLocalArticle.convertedContent,
+              convertedSummary: foundLocalArticle.convertedSummary,
+              category: foundLocalArticle.category,
+              createdAt: foundLocalArticle.createdAt,
+              hasRead: foundLocalArticle.hasRead || false,
+              image: foundLocalArticle.image
             });
+            console.log(`✅ ローカルストレージから記事ID:${id}を取得`);
             setLoading(false);
-            console.log(`📱 ローカルストレージから記事ID:${id}を取得`);
             return;
           }
-        } catch (error) {
-          console.error('ローカルストレージ記事取得エラー:', error);
         }
       }
       
-      // フォールバック：APIから記事を取得
-      const response = await fetch(`/api/articles/child/child1`);
+      // ローカルストレージになければデータベースAPIから記事を取得
+      // 子どもの年齢を8歳に固定（実際のアプリでは認証から取得）
+      const response = await fetch(`/api/articles/child/8`);
       const result = await response.json();
       
       if (result.success) {
@@ -91,6 +91,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
           category: string;
           createdAt: string;
           hasRead: boolean;
+          image?: string;
         }) => a.id.toString() === id);
         if (foundArticle) {
           setArticle({
@@ -100,12 +101,13 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
             convertedSummary: foundArticle.convertedSummary,
             category: foundArticle.category,
             createdAt: foundArticle.createdAt,
-            hasRead: foundArticle.hasRead
+            hasRead: foundArticle.hasRead,
+            image: foundArticle.image
           });
-          console.log(`🔄 APIから記事ID:${id}を取得`);
+          console.log(`✅ APIから記事ID:${id}を取得`);
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
       }
       
       // フォールバック: デモ用サンプルデータ
@@ -159,6 +161,22 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
     }
   };
 
+  // 日付のフォーマット（子供向けに分かりやすく）
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const diffTime = today.getTime() - date.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return 'きょう';
+    } else if (diffDays === 1) {
+      return 'きのう';
+    } else {
+      return `${date.getMonth() + 1}月${date.getDate()}日`;
+    }
+  };
+
   const fetchQuestions = async (id: string) => {
     try {
       const response = await fetch(`/api/articles/${id}/question`);
@@ -168,11 +186,12 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         // 子供自身の質問のみを表示
         const childQuestions = result.questions.filter((q: {
           id: string;
-          childId: string;
+          userId: string;
           status: string;
           createdAt: string;
           parentAnswer?: string;
-        }) => q.childId === 'child1');
+        }) => q.userId === '123e4567-e89b-12d3-a456-426614174000');
+        
         setQuestions(childQuestions);
       }
     } catch (error) {
@@ -195,7 +214,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         },
         body: JSON.stringify({
           reaction: reaction,
-          childId: 'child1'
+          childId: '123e4567-e89b-12d3-a456-426614174000'
         }),
       });
       
@@ -277,7 +296,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         },
         body: JSON.stringify({
           question: questionText,
-          childId: 'child1',
+          childId: '123e4567-e89b-12d3-a456-426614174000',
           articleTitle: article?.convertedTitle,
           articleSummary: article?.convertedSummary
         }),
@@ -414,10 +433,15 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         {/* 記事ヘッダー */}
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
-            <span className={`${getCategoryColor(article.category)} text-white px-4 py-2 rounded-full font-medium flex items-center`}>
-              <span className="text-lg mr-2">{getCategoryEmoji(article.category)}</span>
-              {article.category}
-            </span>
+            <div className="flex items-center space-x-3">
+              <span className={`${getCategoryColor(article.category)} text-white px-4 py-2 rounded-full font-medium flex items-center`}>
+                <span className="text-lg mr-2">{getCategoryEmoji(article.category)}</span>
+                {article.category}
+              </span>
+              <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                📅 {formatDate(article.createdAt)}
+              </span>
+            </div>
             {!article.hasRead && (
               <button
                 onClick={handleMarkAsRead}
@@ -427,6 +451,20 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
               </button>
             )}
           </div>
+          
+          {/* メイン画像 */}
+          {article.image && (
+            <div className="mb-6 rounded-2xl overflow-hidden shadow-lg">
+              <img 
+                src={article.image} 
+                alt={article.convertedTitle}
+                className="w-full h-64 object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+          )}
           
           <h1 className="text-3xl font-bold text-gray-800 mb-4" style={{ fontSize: fontSize + 8 }}>
             {article.convertedTitle}
@@ -456,11 +494,12 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         </div>
 
         {/* 質問スレッドセクション */}
-        {questions.length > 0 && (
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
-            <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">
-              💬 しつもん と おへんじ
-            </h3>
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">
+            💬 しつもん と おへんじ
+          </h3>
+          
+          {questions.length > 0 ? (
             <div className="space-y-4">
               {questions.map((question) => (
                 <div key={question.id} className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-4 border-l-4 border-purple-400">
@@ -498,18 +537,22 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
                 </div>
               ))}
             </div>
-            
-            {/* 追加質問ボタン */}
-            <div className="mt-4 text-center">
-              <button 
-                onClick={() => setShowQuestionForm(true)}
-                className="bg-pink-400 hover:bg-pink-500 text-white px-6 py-3 rounded-full font-medium text-sm transition-all duration-300 transform hover:scale-105 shadow-lg"
-              >
-                もっと しつもん する ➕
-              </button>
+          ) : (
+            <div className="text-center text-gray-500 py-4">
+              まだしつもんはないよ。なにかきいてみよう！
             </div>
+          )}
+          
+          {/* 質問ボタン */}
+          <div className="mt-4 text-center">
+            <button 
+              onClick={() => setShowQuestionForm(true)}
+              className="bg-pink-400 hover:bg-pink-500 text-white px-6 py-3 rounded-full font-medium text-sm transition-all duration-300 transform hover:scale-105 shadow-lg"
+            >
+              {questions.length > 0 ? 'もっと しつもん する ➕' : 'しつもん する ❓'}
+            </button>
           </div>
-        )}
+        </div>
 
         {/* リアクションセクション */}
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">

@@ -21,6 +21,9 @@ export default function KidsNews() {
     hasRead: boolean;
     content: string;
     reactions: string[];
+    image?: string;
+    createdAt: string;
+    formattedDate: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -39,7 +42,7 @@ export default function KidsNews() {
     if (!isAuthorized) return;
     const fetchArticles = async () => {
       try {
-        // ローカルストレージから記事を取得
+        // データベース統合：APIから記事を直接取得（Supabase優先）
         let allArticles: Array<{
           id: number;
           convertedTitle: string;
@@ -52,93 +55,29 @@ export default function KidsNews() {
           isArchived?: boolean;
         }> = [];
         
-        if (typeof window !== 'undefined') {
-          try {
-            const { getStoredArticles } = await import('@/lib/client-storage');
-            const storedArticles = getStoredArticles();
-            // アーカイブされていない記事のみ表示（undefined も含める）
-            allArticles = storedArticles.filter(article => article.isArchived !== true);
-            console.log(`📱 ローカルストレージから${allArticles.length}件の記事を取得（全${storedArticles.length}件中）`);
-            console.log('📱 記事状態詳細:', storedArticles.map(a => ({
-              id: a.id,
-              title: a.convertedTitle?.substring(0, 20),
-              hasRead: a.hasRead,
-              isArchived: a.isArchived
-            })));
-          } catch (error) {
-            console.error('ローカルストレージ取得エラー:', error);
-          }
-        }
-        
-        // APIからも記事を取得（フォールバック）
+        // APIから記事を取得（データベース優先で一元管理）
         try {
-          const response = await fetch('/api/articles/child/child1');
+          const response = await fetch('/api/articles/child/8');
           const result = await response.json();
           
           if (result.success && result.articles.length > 0) {
-            // APIの記事をローカルストレージの記事と統合
-            const apiArticles = result.articles.filter((apiArticle: {
-              id: number;
-              convertedTitle: string;
-              convertedSummary: string;
-              category: string;
-              createdAt: string;
-              hasRead: boolean;
-              convertedContent: string;
-              reactions: string[];
-            }) => 
-              !allArticles.some(stored => stored.id === apiArticle.id)
-            );
-            
-            // 新しいAPI記事をローカルストレージにも保存
-            if (apiArticles.length > 0 && typeof window !== 'undefined') {
-              try {
-                const { addArticleToStorage } = await import('@/lib/client-storage');
-                apiArticles.forEach((apiArticle: {
-                  id: number;
-                  convertedTitle: string;
-                  convertedSummary: string;
-                  category: string;
-                  createdAt: string;
-                  hasRead: boolean;
-                  convertedContent: string;
-                  reactions: string[];
-                }) => {
-                  // API記事をStoredArticle形式に変換して保存
-                  const storedArticle = {
-                    id: apiArticle.id,
-                    originalUrl: `https://example.com/article-${apiArticle.id}`,
-                    childAge: 8,
-                    originalTitle: apiArticle.convertedTitle,
-                    convertedTitle: apiArticle.convertedTitle,
-                    originalContent: apiArticle.convertedContent,
-                    convertedContent: apiArticle.convertedContent,
-                    convertedSummary: apiArticle.convertedSummary,
-                    category: apiArticle.category,
-                    createdAt: apiArticle.createdAt,
-                    status: 'completed',
-                    hasRead: apiArticle.hasRead,
-                    reactions: apiArticle.reactions || [],
-                    isArchived: false
-                  };
-                  addArticleToStorage(storedArticle);
-                });
-                console.log(`💾 API記事${apiArticles.length}件をローカルストレージに保存しました`);
-              } catch (storageError) {
-                console.error('ローカルストレージ保存エラー:', storageError);
-              }
-            }
-            
-            allArticles = [...allArticles, ...apiArticles];
-            console.log(`🔄 API記事${apiArticles.length}件を統合、総計${allArticles.length}件`);
+            allArticles = result.articles.filter((article: {
+              isArchived?: boolean;
+            }) => article.isArchived !== true);
+            console.log(`🗄️ データベースから${allArticles.length}件の記事を取得`);
           }
-        } catch (apiError) {
-          console.warn('API記事取得エラー（ローカルストレージを使用）:', apiError);
+        } catch (error) {
+          console.warn('データベース記事取得エラー:', error);
         }
         
         if (allArticles.length > 0) {
+          // 最新順にソート（日付の新しい順）
+          const sortedArticles = allArticles.sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
           // 記事データを画面表示用に変換
-          const convertedArticles = allArticles.map((article: {
+          const convertedArticles = sortedArticles.map((article: {
             id: number;
             convertedTitle: string;
             convertedSummary: string;
@@ -174,6 +113,22 @@ export default function KidsNews() {
               }
             }
             
+            // 日付のフォーマット（子供向けに分かりやすく）
+            const formatDate = (dateString: string) => {
+              const date = new Date(dateString);
+              const today = new Date();
+              const diffTime = today.getTime() - date.getTime();
+              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+              
+              if (diffDays === 0) {
+                return 'きょう';
+              } else if (diffDays === 1) {
+                return 'きのう';
+              } else {
+                return `${date.getMonth() + 1}月${date.getDate()}日`;
+              }
+            };
+            
             return {
               id: article.id,
               title: article.convertedTitle,
@@ -186,7 +141,10 @@ export default function KidsNews() {
               isNew: new Date(article.createdAt) > new Date(Date.now() - 24*60*60*1000),
               hasRead: article.hasRead,
               content: article.convertedContent,
-              reactions: article.reactions || []
+              reactions: article.reactions || [],
+              image: (article as any).image,
+              createdAt: article.createdAt,
+              formattedDate: formatDate(article.createdAt)
             };
           });
           setNewsArticles(convertedArticles);
@@ -333,24 +291,29 @@ export default function KidsNews() {
           <div className="flex items-center justify-between">
             <Link href="/kids" className="flex items-center space-x-2">
               <span className="text-2xl">🏠</span>
-              <span className="text-xl font-bold text-purple-600">シルシル</span>
+              <span className="text-xl font-bold text-purple-600 flex items-baseline">
+                シルシル
+                <span className="text-xs font-normal text-gray-400 ml-1">for kids</span>
+              </span>
             </Link>
             <div className="flex items-center space-x-4">
-              <Link href="/kids/questions" className="flex items-center space-x-2 bg-pink-100 hover:bg-pink-200 px-4 py-2 rounded-full transition-colors">
+              {/* しつもん機能 - 現在未使用のため非表示 */}
+              {/* <Link href="/kids/questions" className="flex items-center space-x-2 bg-pink-100 hover:bg-pink-200 px-4 py-2 rounded-full transition-colors">
                 <span className="text-lg">❓</span>
                 <span className="text-sm font-medium text-pink-600">しつもん</span>
-              </Link>
+              </Link> */}
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <span className="text-lg">🧒</span>
                   <span className="text-sm font-medium text-gray-600">こども モード</span>
                 </div>
-                <button
+                {/* もどるボタン - 子供は自分のページで完結するため不要 */}
+                {/* <button
                   onClick={handleLogout}
                   className="text-sm text-gray-500 hover:text-red-600 transition-colors"
                 >
                   もどる
-                </button>
+                </button> */}
               </div>
             </div>
           </div>
@@ -358,8 +321,8 @@ export default function KidsNews() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* ウェルカメッセージ */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
+        {/* ウェルカメッセージ - ファーストビューでニュース一覧を優先するため非表示 */}
+        {/* <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
           <div className="text-center">
             <div className="text-6xl mb-4">👋</div>
             <h1 className="text-2xl font-bold text-gray-800 mb-2">
@@ -369,10 +332,10 @@ export default function KidsNews() {
               きょうも あたらしい ニュースを よんでみよう！
             </p>
           </div>
-        </div>
+        </div> */}
 
-        {/* バッジセクション */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
+        {/* バッジセクション - 現在未使用のため非表示 */}
+        {/* <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <span className="text-2xl mr-2">🏆</span>
             きみの バッジ
@@ -396,7 +359,7 @@ export default function KidsNews() {
               </div>
             ))}
           </div>
-        </div>
+        </div> */}
 
         {/* カテゴリフィルター */}
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
@@ -456,6 +419,29 @@ export default function KidsNews() {
                 )}
               </div>
 
+              {/* サムネイル画像 */}
+              {article.image && (
+                <div 
+                  className="relative cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => handleReadArticle(article.id)}
+                >
+                  <img 
+                    src={article.image} 
+                    alt={article.title}
+                    className="w-full h-48 object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent"></div>
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/20">
+                    <div className="bg-white/90 rounded-full p-3 shadow-lg">
+                      <span className="text-2xl">📖</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-3">
@@ -471,14 +457,18 @@ export default function KidsNews() {
                       )}
                     </div>
                   </div>
-                  <div className="text-sm text-gray-500">
-                    {article.readTime}
+                  <div className="text-sm text-gray-500 text-right">
+                    <div className="mb-1">{article.readTime}</div>
+                    <div className="text-xs">{(article as any).formattedDate}</div>
                   </div>
                 </div>
 
-                <h3 className={`text-xl font-bold mb-3 leading-relaxed ${
-                  article.hasRead ? 'text-green-700' : 'text-gray-800'
-                }`}>
+                <h3 
+                  className={`text-xl font-bold mb-3 leading-relaxed cursor-pointer hover:opacity-80 transition-opacity ${
+                    article.hasRead ? 'text-green-700' : 'text-gray-800'
+                  }`}
+                  onClick={() => handleReadArticle(article.id)}
+                >
                   {article.title}
                 </h3>
 

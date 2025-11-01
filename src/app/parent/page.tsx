@@ -8,7 +8,7 @@ import { clearUserType, requireAuth } from "../../lib/auth";
 export default function ParentDashboard() {
   const router = useRouter();
   const [newArticleUrl, setNewArticleUrl] = useState('');
-  const [selectedChild, setSelectedChild] = useState('child1');
+  const [selectedChild, setSelectedChild] = useState('123e4567-e89b-12d3-a456-426614174000');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentArticles, setRecentArticles] = useState<Array<{
     id: number;
@@ -23,6 +23,7 @@ export default function ParentDashboard() {
     archivedAt?: string;
     status: string;
     siteName?: string;
+    image?: string;
   }>>([]);
   const [childQuestions, setChildQuestions] = useState<Array<{
     id: string;
@@ -53,6 +54,7 @@ export default function ParentDashboard() {
     archivedAt?: string;
     status: string;
     siteName?: string;
+    image?: string;
   }>>([]);
   const [selectedArticles, setSelectedArticles] = useState<number[]>([]);
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -60,7 +62,7 @@ export default function ParentDashboard() {
 
   // 子どものデータ
   const [children, setChildren] = useState([
-    { id: 'child1', name: '太郎', age: 8, grade: '小2' },
+    { id: '123e4567-e89b-12d3-a456-426614174000', name: '太郎', age: 8, grade: '小2' },
     { id: 'child2', name: '花子', age: 10, grade: '小4' }
   ]);
 
@@ -89,6 +91,11 @@ export default function ParentDashboard() {
     setEditingChild(null);
   };
 
+  // 記事詳細ページに遷移
+  const handleNavigateToArticle = (articleId: number) => {
+    router.push(`/kids/article/${articleId}?from=parent`);
+  };
+
   // アクセス制御チェック
   useEffect(() => {
     if (!requireAuth('parent')) {
@@ -98,71 +105,33 @@ export default function ParentDashboard() {
     setIsAuthorized(true);
   }, [router]);
 
-  // 最近の記事を取得（ローカルストレージ優先）
+  // 最近の記事を取得（データベース統合：子供ページと同じデータソースを使用）
   useEffect(() => {
     if (!isAuthorized) return;
     
     const fetchRecentArticles = async () => {
       try {
-        let allArticles: Array<{
-          id: number;
-          convertedTitle: string;
-          originalTitle?: string;
-          originalUrl?: string;
-          category: string;
-          createdAt: string;
-          hasRead: boolean;
-          reactions: string[];
-          isArchived?: boolean;
-          archivedAt?: string;
-          status: string;
-          siteName?: string;
-        }> = [];
+        console.log('🔄 親ページ：データベースから記事取得を開始...');
         
-        // まずローカルストレージから記事を取得
-        if (typeof window !== 'undefined') {
-          try {
-            const { getStoredArticles } = await import('@/lib/client-storage');
-            const storedArticles = getStoredArticles();
-            allArticles = storedArticles.filter(article => !article.isArchived);
-            console.log(`📱 親ページ：ローカルストレージから${allArticles.length}件の記事を取得`);
-          } catch (error) {
-            console.error('ローカルストレージ記事取得エラー:', error);
-          }
-        }
+        // 子供ページと同じデータベースAPIを使用（データ整合性確保）
+        const response = await fetch('/api/articles/recent');
+        const result = await response.json();
         
-        // APIからも記事を取得（フォールバック）
-        try {
-          console.log('🔄 API記事取得を開始...');
-          const response = await fetch('/api/articles/recent');
-          const result = await response.json();
+        if (result.success && result.articles.length > 0) {
+          // アーカイブされていない記事のみを表示
+          const activeArticles = result.articles.filter((article: {
+            isArchived?: boolean;
+          }) => article.isArchived !== true);
           
-          if (result.success && result.articles.length > 0) {
-            // APIの記事をローカルストレージの記事と統合
-            const apiArticles = result.articles.filter((apiArticle: {
-              id: number;
-              convertedTitle: string;
-              originalTitle?: string;
-              originalUrl?: string;
-              category: string;
-              createdAt: string;
-              hasRead: boolean;
-              reactions: string[];
-              status: string;
-            }) => 
-              !allArticles.some(stored => stored.id === apiArticle.id)
-            );
-            allArticles = [...allArticles, ...apiArticles];
-            console.log(`🔄 API記事${apiArticles.length}件を統合、総計${allArticles.length}件`);
-          }
-        } catch (apiError) {
-          console.warn('API記事取得エラー（ローカルストレージを使用）:', apiError);
+          setRecentArticles(activeArticles);
+          console.log(`✅ 親ページ：データベースから${activeArticles.length}件の記事を取得完了`);
+        } else {
+          console.warn('⚠️ データベースから記事を取得できませんでした');
+          setRecentArticles([]);
         }
-        
-        // 記事リストを更新
-        setRecentArticles(allArticles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       } catch (error) {
-        console.error('最近の記事取得エラー:', error);
+        console.error('❌ 親ページ記事取得エラー:', error);
+        setRecentArticles([]);
       }
     };
 
@@ -509,8 +478,9 @@ export default function ParentDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/parent" className="flex items-center">
-              <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-baseline">
                 🏠 シルシル
+                <span className="text-sm font-normal text-gray-500 ml-1">for parent</span>
               </span>
             </Link>
             <div className="flex items-center space-x-4">
@@ -581,11 +551,43 @@ export default function ParentDashboard() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* メインコンテンツ */}
           <div className="lg:col-span-2">
-            {/* 記事登録フォーム */}
+            {/* 記事追加方法選択 */}
             <div className="bg-white rounded-lg shadow p-6 mb-8">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 新しい記事を共有
               </h2>
+              
+              {/* 方法選択ボタン */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <Link 
+                  href="/parent/news"
+                  className="flex items-center p-4 border-2 border-indigo-200 rounded-lg hover:border-indigo-400 transition-colors group"
+                >
+                  <div className="text-3xl mr-4">📰</div>
+                  <div>
+                    <h3 className="font-medium text-gray-900 group-hover:text-indigo-600">
+                      ニュースから選択
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      最新ニュース一覧から記事を選んで変換
+                    </p>
+                  </div>
+                </Link>
+                
+                <div className="flex items-center p-4 border-2 border-gray-200 rounded-lg">
+                  <div className="text-3xl mr-4">🔗</div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      URLで直接追加
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      記事のURLを入力して変換
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* URL入力フォーム */}
               <form onSubmit={handleSubmitArticle} className="space-y-4">
                 <div>
                   <label htmlFor="article-url" className="block text-sm font-medium text-gray-700 mb-2">
@@ -729,8 +731,38 @@ export default function ParentDashboard() {
                         </div>
                       )}
                       
+                      {/* サムネイル画像 */}
+                      <div 
+                        className="flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNavigateToArticle(article.id);
+                        }}
+                      >
+                        {article.image ? (
+                          <img 
+                            src={article.image} 
+                            alt={article.convertedTitle || article.originalTitle}
+                            className="w-24 h-16 object-cover rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="w-24 h-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-gray-100 hover:to-gray-200 transition-colors">
+                            <span className="text-gray-400 text-lg">📰</span>
+                          </div>
+                        )}
+                      </div>
+                      
                       <div className="flex-1">
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        <h3 
+                          className="text-lg font-medium text-gray-900 mb-2 cursor-pointer hover:text-blue-600 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNavigateToArticle(article.id);
+                          }}
+                        >
                           {article.convertedTitle || article.originalTitle}
                         </h3>
                         <div className="flex items-center space-x-4 text-sm text-gray-500">
