@@ -61,6 +61,12 @@ export const isParentUser = (): boolean => {
 };
 
 export const requireAuth = (requiredType: UserType): boolean => {
+  // デバッグモード：開発環境では認証をスキップ
+  if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') {
+    console.log(`🔧 デバッグモード: ${requiredType}認証をスキップしています`);
+    return true;
+  }
+  
   if (!isAuthenticated()) return false;
   const currentUserType = getUserType();
   return currentUserType === requiredType;
