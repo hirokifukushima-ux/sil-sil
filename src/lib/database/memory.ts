@@ -7,17 +7,56 @@ import {
   DatabaseError 
 } from './types';
 
+// グローバルストレージ（シングルトンパターン）
+const globalForDb = globalThis as unknown as {
+  memoryProviderData: {
+    articles: Map<number, Article>;
+    users: Map<string, User>;
+    reactions: Map<string, ArticleReaction>;
+    questions: Map<string, Question>;
+    nextArticleId: number;
+    nextQuestionId: number;
+    initialized: boolean;
+  } | undefined;
+};
+
 // 既存のarticle-store.tsの機能をDatabaseProviderインターフェースに準拠させる
 export class MemoryProvider implements DatabaseProvider {
-  private articles: Map<number, Article> = new Map();
-  private users: Map<string, User> = new Map();
-  private reactions: Map<string, ArticleReaction> = new Map();
-  private questions: Map<string, Question> = new Map();
-  private nextArticleId = 1000; // 初期サンプル記事と重複を避けるため1000から開始
-  private nextQuestionId = 1;
+  private articles: Map<number, Article>;
+  private users: Map<string, User>;
+  private reactions: Map<string, ArticleReaction>;
+  private questions: Map<string, Question>;
+  private nextArticleId: number;
+  private nextQuestionId: number;
 
   constructor() {
-    this.initializeData();
+    // グローバルデータが存在しない場合のみ初期化
+    if (!globalForDb.memoryProviderData) {
+      globalForDb.memoryProviderData = {
+        articles: new Map(),
+        users: new Map(),
+        reactions: new Map(),
+        questions: new Map(),
+        nextArticleId: 1000,
+        nextQuestionId: 1,
+        initialized: false
+      };
+    }
+
+    // グローバルデータを参照
+    const data = globalForDb.memoryProviderData;
+    this.articles = data.articles;
+    this.users = data.users;
+    this.reactions = data.reactions;
+    this.questions = data.questions;
+    this.nextArticleId = data.nextArticleId;
+    this.nextQuestionId = data.nextQuestionId;
+
+    // 初期化が必要な場合のみ実行
+    if (!data.initialized) {
+      this.initializeData();
+      data.initialized = true;
+    }
   }
 
   private initializeData() {
@@ -77,10 +116,15 @@ export class MemoryProvider implements DatabaseProvider {
       this.articles.set(article.id, article);
       if (article.id >= this.nextArticleId) {
         this.nextArticleId = article.id + 1;
+        // グローバルデータにも反映
+        if (globalForDb.memoryProviderData) {
+          globalForDb.memoryProviderData.nextArticleId = this.nextArticleId;
+        }
       }
     });
 
     console.log(`🔧 MemoryProvider初期化完了: ${this.articles.size}件の記事を設定`);
+    console.log(`📋 記事一覧:`, Array.from(this.articles.keys()));
   }
 
   async testConnection(): Promise<boolean> {
@@ -94,6 +138,8 @@ export class MemoryProvider implements DatabaseProvider {
     isArchived?: boolean;
     limit?: number;
   }): Promise<Article[]> {
+    console.log(`🔍 getArticles呼び出し: ${this.articles.size}件の記事が存在`);
+    console.log(`📋 現在の記事ID:`, Array.from(this.articles.keys()));
     let articles = Array.from(this.articles.values());
 
     // フィルタリング
@@ -121,14 +167,39 @@ export class MemoryProvider implements DatabaseProvider {
   }
 
   async createArticle(article: Omit<Article, 'id' | 'createdAt'>): Promise<Article> {
+    console.log(`🔥 createArticle呼び出し開始`);
+    console.log(`🔥 入力記事:`, { 
+      title: article.convertedTitle?.substring(0, 50),
+      category: article.category 
+    });
+    console.log(`🔥 現在の記事数: ${this.articles.size}件`);
+    console.log(`🔥 次のID: ${this.nextArticleId}`);
+    
     const newArticle: Article = {
       ...article,
-      id: this.nextArticleId++,
+      id: this.nextArticleId,
       createdAt: new Date().toISOString()
     };
 
+    // IDをインクリメントしてグローバルデータにも反映
+    this.nextArticleId++;
+    if (globalForDb.memoryProviderData) {
+      globalForDb.memoryProviderData.nextArticleId = this.nextArticleId;
+      console.log(`🔥 グローバルnextArticleIdを更新: ${this.nextArticleId}`);
+    } else {
+      console.error(`🚨 グローバルデータが存在しません！`);
+    }
+
     this.articles.set(newArticle.id, newArticle);
-    console.log(`📚 記事を保存しました: ID=${newArticle.id}, タイトル=${newArticle.convertedTitle.substring(0, 30)}...`);
+    console.log(`🔥 記事を保存完了: ID=${newArticle.id}, タイトル=${newArticle.convertedTitle.substring(0, 30)}...`);
+    console.log(`🔥 保存後の記事数: ${this.articles.size}件`);
+    console.log(`🔥 保存後のID一覧:`, Array.from(this.articles.keys()));
+    
+    // グローバルデータの整合性チェック
+    if (globalForDb.memoryProviderData) {
+      console.log(`🔥 グローバル記事数: ${globalForDb.memoryProviderData.articles.size}件`);
+    }
+    
     return newArticle;
   }
 

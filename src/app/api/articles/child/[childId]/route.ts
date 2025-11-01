@@ -18,7 +18,8 @@ export async function GET(
     // URLパラメータから年齢やカテゴリでフィルタリング
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? parseInt(limitParam) : 1000; // limitが指定されていない場合は大きな値（実質制限なし）
     
     console.log(`📚 子供ID ${childId} の記事を取得中...`, { category, limit });
     

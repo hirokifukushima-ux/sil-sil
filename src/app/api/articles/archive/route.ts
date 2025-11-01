@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { archiveArticles, unarchiveArticles, getArchivedArticles } from '@/lib/article-store';
+import { getDatabase, DatabaseError } from '@/lib/database';
 
 // アーカイブ記事の取得
 export async function GET(request: NextRequest) {
@@ -9,7 +9,11 @@ export async function GET(request: NextRequest) {
     
     console.log(`📦 アーカイブ記事を取得中... (limit: ${limit})`);
     
-    const archivedArticles = getArchivedArticles(limit);
+    const db = getDatabase();
+    const archivedArticles = await db.getArticles({
+      isArchived: true,
+      limit
+    });
     
     console.log(`✅ アーカイブ記事取得完了: ${archivedArticles.length}件`);
     
@@ -48,27 +52,50 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    let result;
+    const db = getDatabase();
+    let successCount = 0;
+    const errors: string[] = [];
+    
     if (action === 'archive') {
       console.log(`📦 記事のアーカイブ化実行: ${articleIds.join(', ')}`);
-      result = archiveArticles(articleIds);
+      for (const id of articleIds) {
+        try {
+          const result = await db.updateArticle(id, { 
+            isArchived: true, 
+            archivedAt: new Date().toISOString() 
+          });
+          if (result) successCount++;
+        } catch (error) {
+          errors.push(`記事ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
     } else {
       console.log(`📤 記事のアーカイブ解除実行: ${articleIds.join(', ')}`);
-      result = unarchiveArticles(articleIds);
+      for (const id of articleIds) {
+        try {
+          const result = await db.updateArticle(id, { 
+            isArchived: false, 
+            archivedAt: undefined 
+          });
+          if (result) successCount++;
+        } catch (error) {
+          errors.push(`記事ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
     }
     
-    if (result.success) {
+    if (errors.length === 0) {
       return NextResponse.json({
         success: true,
-        message: `${result.count}件の記事を${action === 'archive' ? 'アーカイブ' : 'アーカイブ解除'}しました`,
-        count: result.count
+        message: `${successCount}件の記事を${action === 'archive' ? 'アーカイブ' : 'アーカイブ解除'}しました`,
+        count: successCount
       });
     } else {
       return NextResponse.json({
         success: false,
         message: `一部の記事で問題が発生しました`,
-        count: result.count,
-        errors: result.errors
+        count: successCount,
+        errors: errors
       }, { status: 207 }); // 207 Multi-Status
     }
     

@@ -204,6 +204,21 @@ export class SupabaseProvider implements DatabaseProvider {
   // リアクション操作
   async addReaction(articleId: number, userId: string, reaction: string): Promise<boolean> {
     try {
+      // まず既存のリアクションをチェック
+      const { data: existingReaction } = await this.client
+        .from('article_reactions')
+        .select('*')
+        .eq('article_id', articleId)
+        .eq('user_id', userId)
+        .eq('reaction', reaction)
+        .single();
+
+      // 既に存在する場合は成功として返す
+      if (existingReaction) {
+        return true;
+      }
+
+      // 存在しない場合は新規追加
       const { error } = await this.client
         .from('article_reactions')
         .insert([{
@@ -214,6 +229,10 @@ export class SupabaseProvider implements DatabaseProvider {
         }]);
 
       if (error) {
+        // 重複エラーの場合は成功として扱う
+        if (error.code === '23505') {
+          return true;
+        }
         throw new DatabaseError(`リアクション追加エラー: ${error.message}`, error.code);
       }
 

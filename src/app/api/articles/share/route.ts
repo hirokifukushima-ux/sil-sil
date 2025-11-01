@@ -38,10 +38,53 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 1. 記事メタデータを取得
+    // 1. 記事メタデータを取得 - Yahoo!ニュースの場合は専用APIを使用
     console.log('📰 記事メタデータを取得中...', url);
-    const rawArticleData = await fetchArticleMetadata(url);
-    const articleContent = convertToArticleContent(rawArticleData);
+    
+    let rawArticleData;
+    let articleContent;
+    
+    if (url.includes('news.yahoo.co.jp')) {
+      console.log('🔄 Yahoo!ニュース専用ロジックを使用...');
+      
+      // Yahoo!記事詳細取得APIを内部的に呼び出し
+      const baseUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : process.env.NEXTAUTH_URL || 'http://localhost:3000';
+      
+      console.log(`🔗 内部API呼び出し: ${baseUrl}/api/news/yahoo-detail`);
+      
+      const yahooResponse = await fetch(`${baseUrl}/api/news/yahoo-detail?url=${encodeURIComponent(url)}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; InternalAPICall/1.0)',
+        }
+      });
+      
+      if (!yahooResponse.ok) {
+        throw new Error(`Yahoo!API呼び出しエラー: ${yahooResponse.status} ${yahooResponse.statusText}`);
+      }
+      
+      const yahooResult = await yahooResponse.json();
+      
+      if (yahooResult.success) {
+        const yahooArticle = yahooResult.article;
+        rawArticleData = {
+          title: yahooArticle.title,
+          description: yahooArticle.summary,
+          content: yahooArticle.content,
+          image: yahooArticle.image,
+          url: yahooArticle.url,
+          site_name: yahooArticle.source
+        };
+        articleContent = convertToArticleContent(rawArticleData);
+      } else {
+        throw new Error(`Yahoo!記事取得エラー: ${yahooResult.error}`);
+      }
+    } else {
+      // 通常の記事取得
+      rawArticleData = await fetchArticleMetadata(url);
+      articleContent = convertToArticleContent(rawArticleData);
+    }
     
     console.log('✅ 記事データ取得完了:', {
       title: articleContent.title.substring(0, 50),
@@ -60,37 +103,72 @@ export async function POST(request: NextRequest) {
     });
     
     // 3. 新しいデータベース抽象化層に保存
-    const db = getDatabase();
-    const articleData = {
-      originalUrl: url,
-      childAge,
-      originalTitle: articleContent.title,
-      convertedTitle: convertedArticle.title,
-      originalContent: articleContent.content,
-      convertedContent: convertedArticle.content,
-      convertedSummary: convertedArticle.summary,
-      category: convertedArticle.category,
-      status: 'completed',
-      siteName: rawArticleData.site_name,
-      image: rawArticleData.image,
-      hasRead: false,
-      reactions: [],
-      isArchived: false
-    };
+    let savedArticle;
     
-    const savedArticle = await db.createArticle(articleData);
+    try {
+      console.log('💾 データベースに保存中...');
+      const db = getDatabase();
+      const articleData = {
+        originalUrl: url,
+        childAge,
+        originalTitle: articleContent.title,
+        convertedTitle: convertedArticle.title,
+        originalContent: articleContent.content,
+        convertedContent: convertedArticle.content,
+        convertedSummary: convertedArticle.summary,
+        category: convertedArticle.category,
+        status: 'completed',
+        siteName: rawArticleData.site_name,
+        image: rawArticleData.image,
+        hasRead: false,
+        reactions: [],
+        isArchived: false
+      };
+      
+      savedArticle = await db.createArticle(articleData);
+      console.log('✅ データベース保存完了:', savedArticle.id);
+      
+    } catch (dbError) {
+      console.warn('⚠️ データベース保存失敗、ローカルストレージのみで対応:', dbError);
+      
+      // データベース保存失敗時は、変換結果だけでも返す
+      savedArticle = {
+        id: Date.now(), // 一時的なID
+        originalUrl: url,
+        childAge,
+        originalTitle: articleContent.title,
+        convertedTitle: convertedArticle.title,
+        originalContent: articleContent.content,
+        convertedContent: convertedArticle.content,
+        convertedSummary: convertedArticle.summary,
+        category: convertedArticle.category,
+        status: 'completed',
+        siteName: rawArticleData.site_name,
+        image: rawArticleData.image,
+        hasRead: false,
+        reactions: [],
+        isArchived: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    }
     
-    console.log('🎉 記事の変換が完了しました:', savedArticle.id);
+    const message = savedArticle.id > 1000000000000 // 一時的IDの場合
+      ? 'AI変換が完了しました！ローカルストレージに保存されました。'
+      : 'AI変換が完了しました！子供がニュースページで読めるようになりました。';
+    
+    console.log('🎉 記事の変換が完了しました:', message);
     
     return NextResponse.json({
       success: true,
       article: savedArticle,
-      message: 'AI変換が完了しました！子供がニュースページで読めるようになりました。',
+      message,
       metadata: {
         processingTime: Date.now(),
         originalLength: articleContent.content.length,
         convertedLength: convertedArticle.content.length,
-        compressionRatio: Math.round((convertedArticle.content.length / articleContent.content.length) * 100)
+        compressionRatio: Math.round((convertedArticle.content.length / articleContent.content.length) * 100),
+        databaseSaved: savedArticle.id <= 1000000000000
       }
     });
     
