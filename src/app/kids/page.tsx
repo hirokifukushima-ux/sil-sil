@@ -291,9 +291,9 @@ export default function KidsNews() {
           <div className="flex items-center justify-between">
             <Link href="/kids" className="flex items-center space-x-2">
               <span className="text-2xl">🏠</span>
-              <span className="text-xl font-bold text-purple-600 flex items-baseline">
+              <span className="text-xl font-bold text-purple-600 flex items-baseline" key="kids-logo">
                 シルシル
-                <span className="text-xs font-normal text-gray-400 ml-1">for kids</span>
+                <span className="text-xs font-normal text-gray-400 ml-1" key="kids-suffix">for kids</span>
               </span>
             </Link>
             <div className="flex items-center space-x-4">

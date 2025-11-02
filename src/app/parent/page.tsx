@@ -478,9 +478,9 @@ export default function ParentDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/parent" className="flex items-center">
-              <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-baseline">
+              <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-baseline" key="parent-logo">
                 🏠 シルシル
-                <span className="text-sm font-normal text-gray-500 ml-1">for parent</span>
+                <span className="text-sm font-normal text-gray-500 ml-1" key="parent-suffix">for parent</span>
               </span>
             </Link>
             <div className="flex items-center space-x-4">
