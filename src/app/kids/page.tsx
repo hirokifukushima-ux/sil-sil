@@ -27,6 +27,7 @@ export default function KidsNews() {
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // アクセス制御チェック
   useEffect(() => {
@@ -151,6 +152,7 @@ export default function KidsNews() {
         }
       } catch (error) {
         console.error('記事取得エラー:', error);
+        setError('記事の読み込み中にエラーが発生しました。しばらく待ってから再度お試しください。');
       } finally {
         setLoading(false);
       }
@@ -278,6 +280,39 @@ export default function KidsNews() {
         <div className="text-center">
           <div className="text-4xl mb-4 animate-spin">🔄</div>
           <div className="text-gray-600">確認中...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-200 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-spin">🔄</div>
+          <div className="text-gray-600">記事を読み込み中...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-200 flex items-center justify-center">
+        <div className="text-center bg-white/90 backdrop-blur-sm rounded-3xl p-8 max-w-md mx-4">
+          <div className="text-4xl mb-4">😰</div>
+          <div className="text-gray-800 mb-4 font-bold">エラーが発生しました</div>
+          <div className="text-gray-600 mb-6 text-sm">{error}</div>
+          <button 
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              window.location.reload();
+            }}
+            className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-full font-bold transition-colors"
+          >
+            もう一度試す
+          </button>
         </div>
       </div>
     );
