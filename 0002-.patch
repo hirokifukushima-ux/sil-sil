@@ -1,0 +1,1469 @@
+From 933be171193c7037d48b990509185507b59b9f3c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E7=A6=8F=E5=B3=B6=E8=A3=95=E6=A8=B9?=
+ <hiroki.fukushima@MacBook-Air.local>
+Date: Sat, 1 Nov 2025 19:39:05 +0900
+Subject: [PATCH 2/3] =?UTF-8?q?=E3=83=87=E3=83=BC=E3=82=BF=E5=90=8C?=
+ =?UTF-8?q?=E6=9C=9F=E5=95=8F=E9=A1=8C=E3=81=AE=E4=BF=AE=E6=AD=A3=E3=81=A8?=
+ =?UTF-8?q?=E3=83=87=E3=83=90=E3=83=83=E3=82=B0=E6=A9=9F=E8=83=BD=E5=BC=B7?=
+ =?UTF-8?q?=E5=8C=96?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- 親子画面のデータソース統一（localStorage + API → 統一API）
+- メモリデータベースのグローバル永続化実装
+- 詳細デバッグログ追加
+- 記事制限の撤廃と最新順ソート対応
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+---
+ src/app/api/articles/archive/route.ts         |  47 +-
+ src/app/api/articles/child/[childId]/route.ts |   3 +-
+ src/app/api/articles/recent/route.ts          |  27 +-
+ src/app/api/articles/share/route.ts           | 130 ++++--
+ src/app/api/debug/database/route.ts           | 131 ++++++
+ src/app/api/news/detail/route.ts              | 227 +++++++++
+ src/app/api/news/list/route.ts                | 131 ++++++
+ src/app/api/news/yahoo-detail/route.ts        | 433 ++++++++++++++++++
+ src/lib/database/memory.ts                    |  89 +++-
+ src/lib/database/supabase.ts                  |  19 +
+ 10 files changed, 1186 insertions(+), 51 deletions(-)
+ create mode 100644 src/app/api/debug/database/route.ts
+ create mode 100644 src/app/api/news/detail/route.ts
+ create mode 100644 src/app/api/news/list/route.ts
+ create mode 100644 src/app/api/news/yahoo-detail/route.ts
+
+diff --git a/src/app/api/articles/archive/route.ts b/src/app/api/articles/archive/route.ts
+index ecca568..889a9bd 100644
+--- a/src/app/api/articles/archive/route.ts
++++ b/src/app/api/articles/archive/route.ts
+@@ -1,5 +1,5 @@
+ import { NextRequest, NextResponse } from 'next/server';
+-import { archiveArticles, unarchiveArticles, getArchivedArticles } from '@/lib/article-store';
++import { getDatabase, DatabaseError } from '@/lib/database';
+ 
+ // アーカイブ記事の取得
+ export async function GET(request: NextRequest) {
+@@ -9,7 +9,11 @@ export async function GET(request: NextRequest) {
+     
+     console.log(`📦 アーカイブ記事を取得中... (limit: ${limit})`);
+     
+-    const archivedArticles = getArchivedArticles(limit);
++    const db = getDatabase();
++    const archivedArticles = await db.getArticles({
++      isArchived: true,
++      limit
++    });
+     
+     console.log(`✅ アーカイブ記事取得完了: ${archivedArticles.length}件`);
+     
+@@ -48,27 +52,50 @@ export async function POST(request: NextRequest) {
+       );
+     }
+     
+-    let result;
++    const db = getDatabase();
++    let successCount = 0;
++    const errors: string[] = [];
++    
+     if (action === 'archive') {
+       console.log(`📦 記事のアーカイブ化実行: ${articleIds.join(', ')}`);
+-      result = archiveArticles(articleIds);
++      for (const id of articleIds) {
++        try {
++          const result = await db.updateArticle(id, { 
++            isArchived: true, 
++            archivedAt: new Date().toISOString() 
++          });
++          if (result) successCount++;
++        } catch (error) {
++          errors.push(`記事ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
++        }
++      }
+     } else {
+       console.log(`📤 記事のアーカイブ解除実行: ${articleIds.join(', ')}`);
+-      result = unarchiveArticles(articleIds);
++      for (const id of articleIds) {
++        try {
++          const result = await db.updateArticle(id, { 
++            isArchived: false, 
++            archivedAt: undefined 
++          });
++          if (result) successCount++;
++        } catch (error) {
++          errors.push(`記事ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
++        }
++      }
+     }
+     
+-    if (result.success) {
++    if (errors.length === 0) {
+       return NextResponse.json({
+         success: true,
+-        message: `${result.count}件の記事を${action === 'archive' ? 'アーカイブ' : 'アーカイブ解除'}しました`,
+-        count: result.count
++        message: `${successCount}件の記事を${action === 'archive' ? 'アーカイブ' : 'アーカイブ解除'}しました`,
++        count: successCount
+       });
+     } else {
+       return NextResponse.json({
+         success: false,
+         message: `一部の記事で問題が発生しました`,
+-        count: result.count,
+-        errors: result.errors
++        count: successCount,
++        errors: errors
+       }, { status: 207 }); // 207 Multi-Status
+     }
+     
+diff --git a/src/app/api/articles/child/[childId]/route.ts b/src/app/api/articles/child/[childId]/route.ts
+index 602fe05..714eaea 100644
+--- a/src/app/api/articles/child/[childId]/route.ts
++++ b/src/app/api/articles/child/[childId]/route.ts
+@@ -18,7 +18,8 @@ export async function GET(
+     // URLパラメータから年齢やカテゴリでフィルタリング
+     const { searchParams } = new URL(request.url);
+     const category = searchParams.get('category');
+-    const limit = parseInt(searchParams.get('limit') || '10');
++    const limitParam = searchParams.get('limit');
++    const limit = limitParam ? parseInt(limitParam) : 1000; // limitが指定されていない場合は大きな値（実質制限なし）
+     
+     console.log(`📚 子供ID ${childId} の記事を取得中...`, { category, limit });
+     
+diff --git a/src/app/api/articles/recent/route.ts b/src/app/api/articles/recent/route.ts
+index e8cfef6..006937c 100644
+--- a/src/app/api/articles/recent/route.ts
++++ b/src/app/api/articles/recent/route.ts
+@@ -1,19 +1,24 @@
+ import { NextRequest, NextResponse } from 'next/server';
+-import { getRecentArticles, getStats } from '@/lib/article-store';
++import { getDatabase, DatabaseError } from '@/lib/database';
+ 
+ export async function GET(request: NextRequest) {
+   try {
+     const { searchParams } = new URL(request.url);
+-    const limit = parseInt(searchParams.get('limit') || '5');
++    const limitParam = searchParams.get('limit');
++    const limit = limitParam ? parseInt(limitParam) : 1000; // limitが指定されていない場合は大きな値（実質制限なし）
+     const includeArchived = searchParams.get('includeArchived') === 'true';
+     
+     console.log(`📊 最近の記事を取得中... (limit: ${limit}, includeArchived: ${includeArchived})`);
+     
+-    // 最近の記事を取得
+-    const articles = getRecentArticles(limit, includeArchived);
++    // 新しいデータベース抽象化層から記事を取得
++    const db = getDatabase();
++    const articles = await db.getArticles({
++      isArchived: includeArchived ? undefined : false, // includeArchived=falseの場合のみアーカイブされていない記事を取得
++      limit
++    });
+     
+     // 統計情報も取得
+-    const stats = getStats('child1'); // 現在は固定、実際は動的に取得
++    const stats = await db.getStats('child1'); // 現在は固定、実際は動的に取得
+     
+     console.log(`✅ 取得完了: ${articles.length}件の記事`);
+     
+@@ -26,6 +31,18 @@ export async function GET(request: NextRequest) {
+     
+   } catch (error) {
+     console.error('❌ 最近の記事取得エラー:', error);
++    
++    // DatabaseErrorの特別処理
++    if (error instanceof DatabaseError) {
++      return NextResponse.json(
++        { 
++          error: `データベースエラー: ${error.message}`,
++          code: error.code
++        },
++        { status: 500 }
++      );
++    }
++    
+     return NextResponse.json(
+       { error: `記事の取得中にエラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}` },
+       { status: 500 }
+diff --git a/src/app/api/articles/share/route.ts b/src/app/api/articles/share/route.ts
+index 167b2c2..b61620a 100644
+--- a/src/app/api/articles/share/route.ts
++++ b/src/app/api/articles/share/route.ts
+@@ -38,10 +38,53 @@ export async function POST(request: NextRequest) {
+       );
+     }
+     
+-    // 1. 記事メタデータを取得
++    // 1. 記事メタデータを取得 - Yahoo!ニュースの場合は専用APIを使用
+     console.log('📰 記事メタデータを取得中...', url);
+-    const rawArticleData = await fetchArticleMetadata(url);
+-    const articleContent = convertToArticleContent(rawArticleData);
++    
++    let rawArticleData;
++    let articleContent;
++    
++    if (url.includes('news.yahoo.co.jp')) {
++      console.log('🔄 Yahoo!ニュース専用ロジックを使用...');
++      
++      // Yahoo!記事詳細取得APIを内部的に呼び出し
++      const baseUrl = process.env.VERCEL_URL 
++        ? `https://${process.env.VERCEL_URL}` 
++        : process.env.NEXTAUTH_URL || 'http://localhost:3000';
++      
++      console.log(`🔗 内部API呼び出し: ${baseUrl}/api/news/yahoo-detail`);
++      
++      const yahooResponse = await fetch(`${baseUrl}/api/news/yahoo-detail?url=${encodeURIComponent(url)}`, {
++        headers: {
++          'User-Agent': 'Mozilla/5.0 (compatible; InternalAPICall/1.0)',
++        }
++      });
++      
++      if (!yahooResponse.ok) {
++        throw new Error(`Yahoo!API呼び出しエラー: ${yahooResponse.status} ${yahooResponse.statusText}`);
++      }
++      
++      const yahooResult = await yahooResponse.json();
++      
++      if (yahooResult.success) {
++        const yahooArticle = yahooResult.article;
++        rawArticleData = {
++          title: yahooArticle.title,
++          description: yahooArticle.summary,
++          content: yahooArticle.content,
++          image: yahooArticle.image,
++          url: yahooArticle.url,
++          site_name: yahooArticle.source
++        };
++        articleContent = convertToArticleContent(rawArticleData);
++      } else {
++        throw new Error(`Yahoo!記事取得エラー: ${yahooResult.error}`);
++      }
++    } else {
++      // 通常の記事取得
++      rawArticleData = await fetchArticleMetadata(url);
++      articleContent = convertToArticleContent(rawArticleData);
++    }
+     
+     console.log('✅ 記事データ取得完了:', {
+       title: articleContent.title.substring(0, 50),
+@@ -60,37 +103,72 @@ export async function POST(request: NextRequest) {
+     });
+     
+     // 3. 新しいデータベース抽象化層に保存
+-    const db = getDatabase();
+-    const articleData = {
+-      originalUrl: url,
+-      childAge,
+-      originalTitle: articleContent.title,
+-      convertedTitle: convertedArticle.title,
+-      originalContent: articleContent.content,
+-      convertedContent: convertedArticle.content,
+-      convertedSummary: convertedArticle.summary,
+-      category: convertedArticle.category,
+-      status: 'completed',
+-      siteName: rawArticleData.site_name,
+-      image: rawArticleData.image,
+-      hasRead: false,
+-      reactions: [],
+-      isArchived: false
+-    };
+-    
+-    const savedArticle = await db.createArticle(articleData);
+-    
+-    console.log('🎉 記事の変換が完了しました:', savedArticle.id);
++    let savedArticle;
++    
++    try {
++      console.log('💾 データベースに保存中...');
++      const db = getDatabase();
++      const articleData = {
++        originalUrl: url,
++        childAge,
++        originalTitle: articleContent.title,
++        convertedTitle: convertedArticle.title,
++        originalContent: articleContent.content,
++        convertedContent: convertedArticle.content,
++        convertedSummary: convertedArticle.summary,
++        category: convertedArticle.category,
++        status: 'completed',
++        siteName: rawArticleData.site_name,
++        image: rawArticleData.image,
++        hasRead: false,
++        reactions: [],
++        isArchived: false
++      };
++      
++      savedArticle = await db.createArticle(articleData);
++      console.log('✅ データベース保存完了:', savedArticle.id);
++      
++    } catch (dbError) {
++      console.warn('⚠️ データベース保存失敗、ローカルストレージのみで対応:', dbError);
++      
++      // データベース保存失敗時は、変換結果だけでも返す
++      savedArticle = {
++        id: Date.now(), // 一時的なID
++        originalUrl: url,
++        childAge,
++        originalTitle: articleContent.title,
++        convertedTitle: convertedArticle.title,
++        originalContent: articleContent.content,
++        convertedContent: convertedArticle.content,
++        convertedSummary: convertedArticle.summary,
++        category: convertedArticle.category,
++        status: 'completed',
++        siteName: rawArticleData.site_name,
++        image: rawArticleData.image,
++        hasRead: false,
++        reactions: [],
++        isArchived: false,
++        createdAt: new Date().toISOString(),
++        updatedAt: new Date().toISOString()
++      };
++    }
++    
++    const message = savedArticle.id > 1000000000000 // 一時的IDの場合
++      ? 'AI変換が完了しました！ローカルストレージに保存されました。'
++      : 'AI変換が完了しました！子供がニュースページで読めるようになりました。';
++    
++    console.log('🎉 記事の変換が完了しました:', message);
+     
+     return NextResponse.json({
+       success: true,
+       article: savedArticle,
+-      message: 'AI変換が完了しました！子供がニュースページで読めるようになりました。',
++      message,
+       metadata: {
+         processingTime: Date.now(),
+         originalLength: articleContent.content.length,
+         convertedLength: convertedArticle.content.length,
+-        compressionRatio: Math.round((convertedArticle.content.length / articleContent.content.length) * 100)
++        compressionRatio: Math.round((convertedArticle.content.length / articleContent.content.length) * 100),
++        databaseSaved: savedArticle.id <= 1000000000000
+       }
+     });
+     
+diff --git a/src/app/api/debug/database/route.ts b/src/app/api/debug/database/route.ts
+new file mode 100644
+index 0000000..57f763d
+--- /dev/null
++++ b/src/app/api/debug/database/route.ts
+@@ -0,0 +1,131 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { getDatabase, checkDatabaseHealth } from '@/lib/database';
++
++export async function GET(request: NextRequest) {
++  try {
++    console.log('🔍 データベース診断開始...');
++    
++    // 環境変数チェック
++    const envStatus = {
++      USE_DATABASE: process.env.NEXT_PUBLIC_USE_DATABASE || 'false',
++      SUPABASE_URL_SET: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
++      SUPABASE_KEY_SET: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
++      OPENAI_KEY_SET: !!process.env.OPENAI_API_KEY,
++      SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'MISSING',
++      SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'MISSING'
++    };
++    
++    console.log('📊 環境変数状況:', envStatus);
++    
++    // データベースインスタンス取得
++    const db = getDatabase();
++    console.log('✅ データベースインスタンス取得完了');
++    
++    // ヘルスチェック実行
++    console.log('🔄 ヘルスチェック実行中...');
++    const healthStatus = await checkDatabaseHealth();
++    console.log('📋 ヘルスチェック結果:', healthStatus);
++    
++    // 接続テスト
++    let connectionTest = null;
++    try {
++      console.log('🔗 直接接続テスト中...');
++      const testResult = await db.testConnection();
++      connectionTest = { success: testResult };
++      console.log('✅ 直接接続テスト結果:', testResult);
++    } catch (error) {
++      connectionTest = { 
++        success: false, 
++        error: error instanceof Error ? error.message : 'Unknown error' 
++      };
++      console.error('❌ 直接接続テストエラー:', error);
++    }
++    
++    // 統計情報の取得
++    let stats = null;
++    try {
++      console.log('📊 統計情報取得中...');
++      stats = await db.getStats();
++      console.log('✅ 統計情報取得完了:', stats);
++    } catch (error) {
++      console.error('❌ 統計情報取得エラー:', error);
++      stats = { error: error instanceof Error ? error.message : 'Unknown error' };
++    }
++    
++    // 記事取得テスト
++    let articlesTest = null;
++    try {
++      console.log('📚 記事取得テスト中...');
++      const articles = await db.getArticles({ limit: 5 });
++      articlesTest = { 
++        success: true, 
++        count: articles.length,
++        articles: articles.map(article => ({
++          id: article.id,
++          title: article.convertedTitle.substring(0, 50),
++          category: article.category,
++          hasRead: article.hasRead,
++          isArchived: article.isArchived,
++          reactions: article.reactions,
++          createdAt: article.createdAt
++        }))
++      };
++      console.log('✅ 記事取得テスト結果:', articlesTest);
++    } catch (error) {
++      articlesTest = { 
++        success: false, 
++        error: error instanceof Error ? error.message : 'Unknown error' 
++      };
++      console.error('❌ 記事取得テストエラー:', error);
++    }
++    
++    const diagnostics = {
++      timestamp: new Date().toISOString(),
++      environment: envStatus,
++      health: healthStatus,
++      connectionTest,
++      stats,
++      articlesTest,
++      recommendations: []
++    };
++    
++    // 推奨事項生成
++    if (!healthStatus.healthy) {
++      diagnostics.recommendations.push('データベース接続が失敗しています。環境変数とSupabaseの設定を確認してください。');
++    }
++    
++    if (envStatus.USE_DATABASE === 'true' && (!envStatus.SUPABASE_URL_SET || !envStatus.SUPABASE_KEY_SET)) {
++      diagnostics.recommendations.push('Supabaseの環境変数が不完全です。NEXT_PUBLIC_SUPABASE_URLとNEXT_PUBLIC_SUPABASE_ANON_KEYを設定してください。');
++    }
++    
++    if (connectionTest?.success === false) {
++      diagnostics.recommendations.push('Supabaseとの接続に失敗しています。ネットワーク接続とSupabaseのステータスを確認してください。');
++    }
++    
++    if (articlesTest?.success === false) {
++      diagnostics.recommendations.push('記事テーブルが存在しないか、アクセス権限がありません。Supabaseでテーブルを作成してください。');
++    }
++    
++    if (articlesTest?.success === true && articlesTest.count === 0) {
++      diagnostics.recommendations.push('記事テーブルは存在しますが、データがありません。記事変換を実行してデータを追加してください。');
++    }
++    
++    console.log('🎯 診断完了:', diagnostics);
++    
++    return NextResponse.json({
++      success: true,
++      diagnostics,
++      message: `データベース診断完了 (プロバイダー: ${healthStatus.provider})`
++    });
++    
++  } catch (error) {
++    console.error('❌ データベース診断エラー:', error);
++    
++    return NextResponse.json({
++      success: false,
++      error: error instanceof Error ? error.message : 'Unknown error',
++      stack: error instanceof Error ? error.stack : undefined,
++      timestamp: new Date().toISOString()
++    }, { status: 500 });
++  }
++}
+\ No newline at end of file
+diff --git a/src/app/api/news/detail/route.ts b/src/app/api/news/detail/route.ts
+new file mode 100644
+index 0000000..669167d
+--- /dev/null
++++ b/src/app/api/news/detail/route.ts
+@@ -0,0 +1,227 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { JSDOM } from 'jsdom';
++
++export interface ArticleDetail {
++  title: string;
++  content: string;
++  publishedAt: string;
++  image?: string;
++  summary: string;
++  url: string;
++}
++
++async function scrapeNHKArticle(url: string): Promise<ArticleDetail> {
++  try {
++    console.log(`🔄 NHK記事スクレイピング開始: ${url}`);
++    
++    // フェッチ
++    const response = await fetch(url, {
++      headers: {
++        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
++      }
++    });
++    
++    if (!response.ok) {
++      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
++    }
++    
++    const html = await response.text();
++    const dom = new JSDOM(html);
++    const document = dom.window.document;
++    
++    // デバッグ：ページの主要な構造を確認
++    console.log('🔍 ページ構造デバッグ:');
++    const mainElements = [
++      'article',
++      '.article-main', 
++      '.content-main',
++      '.module--detail-content',
++      '.detail-content',
++      'main',
++      '.content-body',
++      '.article-body'
++    ];
++    
++    mainElements.forEach(selector => {
++      const element = document.querySelector(selector);
++      if (element) {
++        console.log(`  ✅ 発見: ${selector}`);
++        // 子要素も確認
++        const children = element.children;
++        console.log(`    子要素: ${children.length}個`);
++        for (let i = 0; i < Math.min(children.length, 5); i++) {
++          console.log(`      - ${children[i].tagName}.${children[i].className}`);
++        }
++      }
++    });
++    
++    // タイトル取得
++    const titleElement = document.querySelector('h1.content-title') || 
++                        document.querySelector('h1.article-title') ||
++                        document.querySelector('h1') ||
++                        document.querySelector('.article-header h1') ||
++                        document.querySelector('title');
++    const title = titleElement?.textContent?.trim() || 'タイトル不明';
++    
++    // 本文取得 - NHKの新しい構造に対応
++    const contentSelectors = [
++      'article div[class*="esl7kn2s"] p',  // NHKの新構造に対応
++      'article div p',                     // より広範囲
++      '[class*="content"] p',              // コンテンツ系クラス
++      '[class*="body"] p',                 // ボディ系クラス
++      '[class*="text"] p',                 // テキスト系クラス
++      '.content-body .body-text p',        // 従来構造
++      '.article-body .body-text p',
++      '.body-text p',
++      'main p',                            // より広範囲
++      'article p'                          // 最も広範囲
++    ];
++    
++    let contentElements: NodeListOf<Element> | null = null;
++    let selectedSelector = '';
++    
++    for (const selector of contentSelectors) {
++      contentElements = document.querySelectorAll(selector);
++      if (contentElements.length > 0) {
++        selectedSelector = selector;
++        console.log(`✅ コンテンツ取得成功: ${selector} - ${contentElements.length}個の段落`);
++        break;
++      }
++    }
++    
++    let content = '';
++    if (contentElements && contentElements.length > 0) {
++      const contentParts: string[] = [];
++      contentElements.forEach((element, index) => {
++        const text = element.textContent?.trim();
++        if (text && 
++            text.length > 30 &&                    // より長い文章のみ（記事本文らしく）
++            !text.includes('シェア') && 
++            !text.includes('ツイート') &&
++            !text.includes('関連記事') &&
++            !text.includes('続きを読む') &&
++            !text.includes('JavaScript') &&       // JSコード除外
++            !text.includes('const ') &&           // JSコード除外
++            !text.includes('function') &&         // JSコード除外
++            !text.includes('document.') &&        // JSコード除外
++            !text.includes('window.') &&          // JSコード除外
++            !text.includes('mediaQuery') &&       // JSコード除外
++            !text.includes('classList') &&        // JSコード除外
++            !text.includes('addEventListener') &&  // JSコード除外
++            !text.match(/^\d+月\d+日/) &&
++            !text.match(/^[「【].*[」】]$/) &&     // タイトル形式を除外
++            text.includes('。') &&                 // 日本語の文章らしさ
++            !text.match(/^[a-zA-Z\s\.\(\)]+$/)) {  // 英語のみの行を除外
++          contentParts.push(text);
++          if (index < 5) {
++            console.log(`📝 段落${index + 1}: ${text.substring(0, 50)}...`);
++          }
++        }
++      });
++      content = contentParts.join('\n\n');
++      console.log(`📄 最終コンテンツ長: ${content.length}文字, 段落数: ${contentParts.length}`);
++    }
++    
++    // コンテンツが取得できない場合は、より広範囲で取得
++    if (!content || content.length < 50) {
++      console.log('⚠️ 詳細コンテンツ取得失敗、代替方法を試行');
++      const bodyText = document.body?.textContent || '';
++      const lines = bodyText.split('\n')
++        .map(line => line.trim())
++        .filter(line => line.length > 20 && 
++          !line.includes('シェア') && 
++          !line.includes('ツイート') &&
++          !line.includes('JavaScript') &&
++          !line.includes('cookie'))
++        .slice(0, 10); // 最初の10行程度
++      content = lines.join('\n\n');
++    }
++    
++    // 画像取得
++    const imageElement = document.querySelector('img[src*="nhk.or.jp"]') ||
++                        document.querySelector('.article-main img') ||
++                        document.querySelector('.content-main img') ||
++                        document.querySelector('article img');
++    let image = imageElement?.getAttribute('src') || '';
++    if (image && !image.startsWith('http')) {
++      image = `https://www3.nhk.or.jp${image}`;
++    }
++    
++    // 公開日時取得
++    const timeElement = document.querySelector('time') ||
++                       document.querySelector('.date') ||
++                       document.querySelector('.published');
++    const publishedAt = timeElement?.getAttribute('datetime') || 
++                       timeElement?.textContent?.trim() || 
++                       new Date().toISOString();
++    
++    // 要約作成（最初の段落または150文字）
++    const summary = content.length > 150 
++      ? content.substring(0, 150) + '...'
++      : content;
++    
++    const result: ArticleDetail = {
++      title,
++      content: content || '記事内容を取得できませんでした。',
++      publishedAt,
++      image: image || undefined,
++      summary,
++      url
++    };
++    
++    console.log(`✅ NHK記事スクレイピング完了:`, {
++      title: title.substring(0, 30) + '...',
++      contentLength: content.length,
++      hasImage: !!image
++    });
++    
++    return result;
++    
++  } catch (error) {
++    console.error(`❌ NHK記事スクレイピングエラー: ${url}`, error);
++    throw error;
++  }
++}
++
++export async function GET(request: NextRequest) {
++  try {
++    const { searchParams } = new URL(request.url);
++    const url = searchParams.get('url');
++    
++    if (!url) {
++      return NextResponse.json({
++        success: false,
++        error: 'URLパラメータが必要です'
++      }, { status: 400 });
++    }
++    
++    // NHKのURLかチェック
++    if (!url.includes('nhk.or.jp')) {
++      return NextResponse.json({
++        success: false,
++        error: 'NHKの記事URLのみサポートしています'
++      }, { status: 400 });
++    }
++    
++    console.log(`🔄 記事詳細取得開始: ${url}`);
++    
++    const articleDetail = await scrapeNHKArticle(url);
++    
++    console.log(`✅ 記事詳細取得完了`);
++    
++    return NextResponse.json({
++      success: true,
++      article: articleDetail,
++      fetchedAt: new Date().toISOString()
++    });
++    
++  } catch (error) {
++    console.error('記事詳細取得エラー:', error);
++    
++    return NextResponse.json({
++      success: false,
++      error: '記事の詳細取得に失敗しました',
++      details: error instanceof Error ? error.message : 'Unknown error'
++    }, { status: 500 });
++  }
++}
+\ No newline at end of file
+diff --git a/src/app/api/news/list/route.ts b/src/app/api/news/list/route.ts
+new file mode 100644
+index 0000000..1edcdea
+--- /dev/null
++++ b/src/app/api/news/list/route.ts
+@@ -0,0 +1,131 @@
++import { NextRequest, NextResponse } from 'next/server';
++import Parser from 'rss-parser';
++import { JSDOM } from 'jsdom';
++
++
++const parser = new Parser({
++  customFields: {
++    item: [
++      ['media:thumbnail', 'thumbnail'],
++      ['media:content', 'mediaContent'],
++    ]
++  }
++});
++
++export interface NewsItem {
++  title: string;
++  link: string;
++  description: string;
++  pubDate: string;
++  category: string;
++  thumbnail?: string;
++}
++
++// Yahoo!ニュースのRSSフィード一覧
++const YAHOO_RSS_FEEDS = {
++  main: 'https://news.yahoo.co.jp/rss/topics/top-picks.xml',     // 主要
++  domestic: 'https://news.yahoo.co.jp/rss/topics/domestic.xml', // 国内
++  world: 'https://news.yahoo.co.jp/rss/topics/world.xml',       // 国際
++  business: 'https://news.yahoo.co.jp/rss/topics/business.xml', // 経済
++  entertainment: 'https://news.yahoo.co.jp/rss/topics/entertainment.xml', // エンタメ
++  sports: 'https://news.yahoo.co.jp/rss/topics/sports.xml',     // スポーツ
++  it: 'https://news.yahoo.co.jp/rss/topics/it.xml',             // IT
++  science: 'https://news.yahoo.co.jp/rss/topics/science.xml',   // 科学
++};
++
++async function fetchRSSFeed(url: string, categoryName: string): Promise<NewsItem[]> {
++  try {
++    console.log(`📡 RSS取得開始: ${categoryName} - ${url}`);
++    
++    const feed = await parser.parseURL(url);
++    
++    const items: NewsItem[] = feed.items.map((item) => ({
++      title: item.title || '',
++      link: item.link || '',
++      description: item.contentSnippet || item.description || '',
++      pubDate: item.pubDate || new Date().toISOString(),
++      category: categoryName,
++      thumbnail: (item as any).thumbnail?.url || (item as any)['media:thumbnail']?.url
++    }));
++    
++    console.log(`✅ RSS取得完了: ${categoryName} - ${items.length}件`);
++    return items;
++  } catch (error) {
++    console.error(`❌ RSS取得エラー: ${categoryName}`, error);
++    return [];
++  }
++}
++
++export async function GET(request: NextRequest) {
++  try {
++    const { searchParams } = new URL(request.url);
++    const category = searchParams.get('category') || 'main';
++    const limit = parseInt(searchParams.get('limit') || '20');
++    
++    console.log(`🔄 ニュース一覧取得開始 - カテゴリ: ${category}, 制限: ${limit}`);
++    
++    let newsItems: NewsItem[] = [];
++    
++    if (category === 'all') {
++      // 全カテゴリから取得
++      const promises = Object.entries(YAHOO_RSS_FEEDS).map(([key, url]) => 
++        fetchRSSFeed(url, getCategoryDisplayName(key))
++      );
++      
++      const results = await Promise.allSettled(promises);
++      newsItems = results
++        .filter((result): result is PromiseFulfilledResult<NewsItem[]> => result.status === 'fulfilled')
++        .flatMap(result => result.value);
++        
++    } else if (YAHOO_RSS_FEEDS[category as keyof typeof YAHOO_RSS_FEEDS]) {
++      // 指定カテゴリから取得
++      const url = YAHOO_RSS_FEEDS[category as keyof typeof YAHOO_RSS_FEEDS];
++      newsItems = await fetchRSSFeed(url, getCategoryDisplayName(category));
++    } else {
++      return NextResponse.json({
++        success: false,
++        error: '無効なカテゴリです'
++      }, { status: 400 });
++    }
++    
++    // 公開日時順でソート
++    newsItems.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
++    
++    // 制限数に絞る
++    const limitedItems = newsItems.slice(0, limit);
++    
++    console.log(`✅ ニュース一覧取得完了 - ${limitedItems.length}件返却`);
++    
++    return NextResponse.json({
++      success: true,
++      news: limitedItems,
++      totalCount: limitedItems.length,
++      category: category,
++      fetchedAt: new Date().toISOString()
++    });
++    
++  } catch (error) {
++    console.error('ニュース一覧取得エラー:', error);
++    
++    return NextResponse.json({
++      success: false,
++      error: 'ニュース一覧の取得に失敗しました',
++      details: error instanceof Error ? error.message : 'Unknown error'
++    }, { status: 500 });
++  }
++}
++
++function getCategoryDisplayName(key: string): string {
++  const categoryMap: { [key: string]: string } = {
++    main: '主要',
++    domestic: '国内',
++    world: '国際',
++    business: '経済',
++    entertainment: 'エンタメ',
++    sports: 'スポーツ',
++    it: 'IT',
++    science: '科学'
++  };
++  
++  return categoryMap[key] || key;
++}
+\ No newline at end of file
+diff --git a/src/app/api/news/yahoo-detail/route.ts b/src/app/api/news/yahoo-detail/route.ts
+new file mode 100644
+index 0000000..6cc5bc3
+--- /dev/null
++++ b/src/app/api/news/yahoo-detail/route.ts
+@@ -0,0 +1,433 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { JSDOM } from 'jsdom';
++
++async function getActualArticleUrl(pickupUrl: string): Promise<string> {
++  try {
++    const response = await fetch(pickupUrl, {
++      headers: {
++        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
++      }
++    });
++    
++    if (!response.ok) {
++      console.warn('pickup URLの取得に失敗、元URLを使用');
++      return pickupUrl;
++    }
++    
++    const html = await response.text();
++    const dom = new JSDOM(html);
++    const document = dom.window.document;
++    
++    // 実際の記事URLを探す
++    const articleLinkSelectors = [
++      'a[href*="news.yahoo.co.jp/articles/"]',
++      'a[href*="/articles/"]',
++      '.sc-cNKqjZ a',
++      '.article-link',
++      '[data-ual-module="Article"] a'
++    ];
++    
++    for (const selector of articleLinkSelectors) {
++      const linkElement = document.querySelector(selector);
++      if (linkElement) {
++        let href = linkElement.getAttribute('href');
++        if (href) {
++          if (href.startsWith('/')) {
++            href = `https://news.yahoo.co.jp${href}`;
++          }
++          if (href.includes('/articles/')) {
++            console.log(`✅ 実際の記事URL発見: ${href}`);
++            return href;
++          }
++        }
++      }
++    }
++    
++    // 見つからない場合はリダイレクト先を試行
++    const metaRefresh = document.querySelector('meta[http-equiv="refresh"]');
++    if (metaRefresh) {
++      const content = metaRefresh.getAttribute('content');
++      const urlMatch = content?.match(/url=(.+)/);
++      if (urlMatch) {
++        const redirectUrl = urlMatch[1];
++        if (redirectUrl.includes('/articles/')) {
++          console.log(`✅ リダイレクト先URL発見: ${redirectUrl}`);
++          return redirectUrl;
++        }
++      }
++    }
++    
++    console.warn('実際の記事URLが見つからない、元URLを使用');
++    return pickupUrl;
++    
++  } catch (error) {
++    console.error('pickup URL解析エラー:', error);
++    return pickupUrl;
++  }
++}
++
++export interface YahooArticleDetail {
++  title: string;
++  content: string;
++  publishedAt: string;
++  image?: string;
++  summary: string;
++  url: string;
++  source?: string;
++}
++
++async function scrapeYahooArticle(url: string): Promise<YahooArticleDetail> {
++  try {
++    console.log(`🔄 Yahoo!記事スクレイピング開始: ${url}`);
++    
++    let targetUrl = url;
++    
++    // pickup URLの場合、実際の記事URLを取得
++    if (url.includes('/pickup/')) {
++      console.log('🔍 pickup URLを検出、実際の記事URLを取得中...');
++      targetUrl = await getActualArticleUrl(url);
++      console.log(`📰 実際の記事URL: ${targetUrl}`);
++    }
++    
++    // フェッチ
++    const response = await fetch(targetUrl, {
++      headers: {
++        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
++      }
++    });
++    
++    if (!response.ok) {
++      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
++    }
++    
++    const html = await response.text();
++    const dom = new JSDOM(html);
++    const document = dom.window.document;
++    
++    // デバッグ：ページの主要な構造を確認
++    console.log('🔍 Yahoo!ページ構造デバッグ:');
++    const mainElements = [
++      'article',
++      '.article',
++      '[data-ual-module="Article"]',
++      '.sc-bxHsqm',
++      '.highLight',
++      'main'
++    ];
++    
++    mainElements.forEach(selector => {
++      const element = document.querySelector(selector);
++      if (element) {
++        console.log(`  ✅ 発見: ${selector}`);
++      }
++    });
++    
++    // タイトル取得 - Yahoo!ニュースの構造に対応
++    const titleSelectors = [
++      'h1[data-ual-module="Headline"]',
++      '.sc-bxHsqm h1',
++      'article h1',
++      '.article-header h1',
++      'h1'
++    ];
++    
++    let title = '';
++    for (const selector of titleSelectors) {
++      const titleElement = document.querySelector(selector);
++      if (titleElement?.textContent?.trim()) {
++        title = titleElement.textContent.trim();
++        console.log(`✅ タイトル取得成功: ${selector}`);
++        break;
++      }
++    }
++    
++    if (!title) {
++      title = document.title || 'タイトル不明';
++    }
++    
++    // 本文取得 - Yahoo!ニュースの構造に対応
++    const contentSelectors = [
++      '.highLight p',                              // Yahoo!ニュースの記事本文（旧構造）
++      '[data-ual-module="Article"] p',             // データ属性ベース
++      '.sc-dmlJSK p',                             // 新しいスタイルコンポーネント
++      '.sc-bxHsqm .sc-eCBpNj p',                  // スタイルコンポーネント
++      '.article-body p',                           // 一般的な構造
++      '.article-content p',
++      '.content p',
++      '.textBody p',
++      'article div p',                             // より広範囲
++      'main p'
++    ];
++    
++    let contentElements: NodeListOf<Element> | null = null;
++    let selectedSelector = '';
++    
++    for (const selector of contentSelectors) {
++      contentElements = document.querySelectorAll(selector);
++      if (contentElements.length > 0) {
++        selectedSelector = selector;
++        console.log(`✅ コンテンツ取得成功: ${selector} - ${contentElements.length}個の段落`);
++        break;
++      }
++    }
++    
++    let content = '';
++    if (contentElements && contentElements.length > 0) {
++      const contentParts: string[] = [];
++      contentElements.forEach((element, index) => {
++        const text = element.textContent?.trim();
++        if (text && 
++            text.length > 15 &&                    // より短い文も含める
++            !text.includes('シェア') && 
++            !text.includes('ツイート') &&
++            !text.includes('関連記事') &&
++            !text.includes('続きを読む') &&
++            !text.includes('Yahoo!ニュース個人') &&  // 固有名詞を除く
++            !text.includes('※この記事は') &&
++            !text.includes('写真:') &&
++            !text.includes('画像:') &&
++            (text.includes('。') || text.includes('、') || text.length > 50) &&  // 日本語の文章判定を緩和
++            !text.match(/^[a-zA-Z\s\.\(\)]+$/)) {  // 英語のみを除外
++          contentParts.push(text);
++          if (index < 5) {
++            console.log(`📝 段落${index + 1}: ${text.substring(0, 50)}...`);
++          }
++        }
++      });
++      content = contentParts.join('\n\n');
++      console.log(`📄 最終コンテンツ長: ${content.length}文字, 段落数: ${contentParts.length}`);
++    }
++    
++    // コンテンツが取得できない場合の代替処理
++    if (!content || content.length < 100) {
++      console.log('⚠️ Yahoo!記事本文取得失敗、代替方法を試行');
++      
++      // より広範囲な取得を試行
++      const allParagraphs = document.querySelectorAll('p');
++      const fallbackContent: string[] = [];
++      
++      allParagraphs.forEach(p => {
++        const text = p.textContent?.trim();
++        if (text && 
++            text.length > 30 &&
++            text.includes('。') &&
++            !text.includes('シェア') &&
++            !text.includes('ツイート') &&
++            !text.includes('Yahoo!') &&
++            !text.includes('配信')) {
++          fallbackContent.push(text);
++        }
++      });
++      
++      content = fallbackContent.slice(0, 10).join('\n\n');
++      console.log(`📄 代替コンテンツ長: ${content.length}文字`);
++    }
++    
++    // 画像取得 - 記事内容に関連する画像を優先的に選択
++    const imageSelectors = [
++      'article img',
++      '.article img', 
++      '.highLight img',
++      '[data-ual-module="Article"] img',
++      '.article-body img',
++      '.content img',
++      'main img'
++    ];
++    
++    let image = '';
++    let bestImage = '';
++    
++    // 全ての画像をチェックして最適なものを選択
++    for (const selector of imageSelectors) {
++      const imgElements = document.querySelectorAll(selector);
++      
++      for (const imgElement of imgElements) {
++        const src = imgElement.getAttribute('src');
++        if (!src) continue;
++        
++        let fullSrc = src;
++        if (!fullSrc.startsWith('http')) {
++          fullSrc = `https:${fullSrc}`;
++        }
++        
++        // 媒体ロゴや小さい画像を除外
++        const alt = imgElement.getAttribute('alt') || '';
++        const width = imgElement.getAttribute('width') || imgElement.style.width || '';
++        const height = imgElement.getAttribute('height') || imgElement.style.height || '';
++        
++        // 除外条件を強化
++        const isLogo = (
++          fullSrc.includes('logo') ||
++          fullSrc.includes('icon') ||
++          fullSrc.includes('favicon') ||
++          alt.toLowerCase().includes('logo') ||
++          alt.toLowerCase().includes('icon') ||
++          fullSrc.includes('avatar') ||
++          fullSrc.includes('profile') ||
++          // 媒体名を含む画像URLを除外
++          fullSrc.includes('afp') ||
++          fullSrc.includes('sankei') ||
++          fullSrc.includes('asahi') ||
++          fullSrc.includes('mainichi') ||
++          fullSrc.includes('yomiuri') ||
++          fullSrc.includes('nikkei') ||
++          fullSrc.includes('kyodo') ||
++          fullSrc.includes('jiji') ||
++          fullSrc.includes('reuters') ||
++          fullSrc.includes('cnn') ||
++          fullSrc.includes('bloomberg') ||
++          // ファイル名パターンで除外
++          fullSrc.match(/\/(logo|icon|favicon|brand|corp|company|media)[\w\-]*\.(jpg|jpeg|png|gif|svg)/i) ||
++          // 固定サイズの小さい画像（大抵ロゴ）
++          fullSrc.includes('150x') ||
++          fullSrc.includes('200x') ||
++          fullSrc.includes('100x') ||
++          fullSrc.includes('50x')
++        );
++        
++        const isSmall = (
++          (width && parseInt(width) < 150) ||
++          (height && parseInt(height) < 150)
++        );
++        
++        // 広告やSNS関連の画像を除外
++        const isAd = (
++          fullSrc.includes('ad') ||
++          fullSrc.includes('banner') ||
++          fullSrc.includes('promo') ||
++          fullSrc.includes('sns') ||
++          fullSrc.includes('social') ||
++          fullSrc.includes('twitter') ||
++          fullSrc.includes('facebook') ||
++          fullSrc.includes('youtube') ||
++          fullSrc.includes('instagram') ||
++          fullSrc.includes('tiktok')
++        );
++        
++        // Yahoo!固有の除外パターン
++        const isYahooSystem = (
++          fullSrc.includes('y.yimg.jp') && (
++            fullSrc.includes('/default/') ||
++            fullSrc.includes('/common/') ||
++            fullSrc.includes('/ui/') ||
++            fullSrc.includes('/logo/') ||
++            fullSrc.includes('/icon/')
++          )
++        );
++        
++        if (!isLogo && !isSmall && !isAd && !isYahooSystem) {
++          // 最初に見つかった適切な画像を使用
++          if (!bestImage) {
++            bestImage = fullSrc;
++            console.log(`✅ 記事画像を選択: ${fullSrc.substring(0, 80)}...`);
++            break;
++          }
++        } else {
++          const reason = isLogo ? 'ロゴ/媒体' : isSmall ? '小さすぎる' : isAd ? 'ソーシャル/広告' : 'Yahooシステム';
++          console.log(`⚠️ 画像をスキップ: ${fullSrc.substring(0, 50)}... (理由: ${reason})`);
++        }
++      }
++      
++      if (bestImage) break;
++    }
++    
++    image = bestImage;
++    
++    // 公開日時取得
++    const timeSelectors = [
++      'time',
++      '[data-ual-module="Time"]',
++      '.article-time',
++      '.sc-time'
++    ];
++    
++    let publishedAt = new Date().toISOString();
++    for (const selector of timeSelectors) {
++      const timeElement = document.querySelector(selector);
++      if (timeElement) {
++        const datetime = timeElement.getAttribute('datetime') || timeElement.textContent?.trim();
++        if (datetime) {
++          publishedAt = datetime;
++          break;
++        }
++      }
++    }
++    
++    // 配信元取得
++    const sourceElement = document.querySelector('[data-ual-module="Source"]') ||
++                         document.querySelector('.source') ||
++                         document.querySelector('.article-source');
++    const source = sourceElement?.textContent?.trim() || 'Yahoo!ニュース';
++    
++    // 要約作成
++    const summary = content.length > 100 
++      ? content.substring(0, 100) + '...'
++      : content;
++    
++    const result: YahooArticleDetail = {
++      title,
++      content: content || '記事内容を取得できませんでした。',
++      publishedAt,
++      image: image || undefined,
++      summary,
++      url,
++      source
++    };
++    
++    console.log(`✅ Yahoo!記事スクレイピング完了:`, {
++      title: title.substring(0, 30) + '...',
++      contentLength: content.length,
++      hasImage: !!image,
++      source
++    });
++    
++    return result;
++    
++  } catch (error) {
++    console.error(`❌ Yahoo!記事スクレイピングエラー: ${url}`, error);
++    throw error;
++  }
++}
++
++export async function GET(request: NextRequest) {
++  try {
++    const { searchParams } = new URL(request.url);
++    const url = searchParams.get('url');
++    
++    if (!url) {
++      return NextResponse.json({
++        success: false,
++        error: 'URLパラメータが必要です'
++      }, { status: 400 });
++    }
++    
++    // Yahoo!ニュースのURLかチェック
++    if (!url.includes('news.yahoo.co.jp')) {
++      return NextResponse.json({
++        success: false,
++        error: 'Yahoo!ニュースの記事URLのみサポートしています'
++      }, { status: 400 });
++    }
++    
++    console.log(`🔄 Yahoo!記事詳細取得開始: ${url}`);
++    
++    const articleDetail = await scrapeYahooArticle(url);
++    
++    console.log(`✅ Yahoo!記事詳細取得完了`);
++    
++    return NextResponse.json({
++      success: true,
++      article: articleDetail,
++      fetchedAt: new Date().toISOString()
++    });
++    
++  } catch (error) {
++    console.error('Yahoo!記事詳細取得エラー:', error);
++    
++    return NextResponse.json({
++      success: false,
++      error: 'Yahoo!記事の詳細取得に失敗しました',
++      details: error instanceof Error ? error.message : 'Unknown error'
++    }, { status: 500 });
++  }
++}
+\ No newline at end of file
+diff --git a/src/lib/database/memory.ts b/src/lib/database/memory.ts
+index 83e2b8c..eb8dd6c 100644
+--- a/src/lib/database/memory.ts
++++ b/src/lib/database/memory.ts
+@@ -7,17 +7,56 @@ import {
+   DatabaseError 
+ } from './types';
+ 
++// グローバルストレージ（シングルトンパターン）
++const globalForDb = globalThis as unknown as {
++  memoryProviderData: {
++    articles: Map<number, Article>;
++    users: Map<string, User>;
++    reactions: Map<string, ArticleReaction>;
++    questions: Map<string, Question>;
++    nextArticleId: number;
++    nextQuestionId: number;
++    initialized: boolean;
++  } | undefined;
++};
++
+ // 既存のarticle-store.tsの機能をDatabaseProviderインターフェースに準拠させる
+ export class MemoryProvider implements DatabaseProvider {
+-  private articles: Map<number, Article> = new Map();
+-  private users: Map<string, User> = new Map();
+-  private reactions: Map<string, ArticleReaction> = new Map();
+-  private questions: Map<string, Question> = new Map();
+-  private nextArticleId = 1000; // 初期サンプル記事と重複を避けるため1000から開始
+-  private nextQuestionId = 1;
++  private articles: Map<number, Article>;
++  private users: Map<string, User>;
++  private reactions: Map<string, ArticleReaction>;
++  private questions: Map<string, Question>;
++  private nextArticleId: number;
++  private nextQuestionId: number;
+ 
+   constructor() {
+-    this.initializeData();
++    // グローバルデータが存在しない場合のみ初期化
++    if (!globalForDb.memoryProviderData) {
++      globalForDb.memoryProviderData = {
++        articles: new Map(),
++        users: new Map(),
++        reactions: new Map(),
++        questions: new Map(),
++        nextArticleId: 1000,
++        nextQuestionId: 1,
++        initialized: false
++      };
++    }
++
++    // グローバルデータを参照
++    const data = globalForDb.memoryProviderData;
++    this.articles = data.articles;
++    this.users = data.users;
++    this.reactions = data.reactions;
++    this.questions = data.questions;
++    this.nextArticleId = data.nextArticleId;
++    this.nextQuestionId = data.nextQuestionId;
++
++    // 初期化が必要な場合のみ実行
++    if (!data.initialized) {
++      this.initializeData();
++      data.initialized = true;
++    }
+   }
+ 
+   private initializeData() {
+@@ -77,10 +116,15 @@ export class MemoryProvider implements DatabaseProvider {
+       this.articles.set(article.id, article);
+       if (article.id >= this.nextArticleId) {
+         this.nextArticleId = article.id + 1;
++        // グローバルデータにも反映
++        if (globalForDb.memoryProviderData) {
++          globalForDb.memoryProviderData.nextArticleId = this.nextArticleId;
++        }
+       }
+     });
+ 
+     console.log(`🔧 MemoryProvider初期化完了: ${this.articles.size}件の記事を設定`);
++    console.log(`📋 記事一覧:`, Array.from(this.articles.keys()));
+   }
+ 
+   async testConnection(): Promise<boolean> {
+@@ -94,6 +138,8 @@ export class MemoryProvider implements DatabaseProvider {
+     isArchived?: boolean;
+     limit?: number;
+   }): Promise<Article[]> {
++    console.log(`🔍 getArticles呼び出し: ${this.articles.size}件の記事が存在`);
++    console.log(`📋 現在の記事ID:`, Array.from(this.articles.keys()));
+     let articles = Array.from(this.articles.values());
+ 
+     // フィルタリング
+@@ -121,14 +167,39 @@ export class MemoryProvider implements DatabaseProvider {
+   }
+ 
+   async createArticle(article: Omit<Article, 'id' | 'createdAt'>): Promise<Article> {
++    console.log(`🔥 createArticle呼び出し開始`);
++    console.log(`🔥 入力記事:`, { 
++      title: article.convertedTitle?.substring(0, 50),
++      category: article.category 
++    });
++    console.log(`🔥 現在の記事数: ${this.articles.size}件`);
++    console.log(`🔥 次のID: ${this.nextArticleId}`);
++    
+     const newArticle: Article = {
+       ...article,
+-      id: this.nextArticleId++,
++      id: this.nextArticleId,
+       createdAt: new Date().toISOString()
+     };
+ 
++    // IDをインクリメントしてグローバルデータにも反映
++    this.nextArticleId++;
++    if (globalForDb.memoryProviderData) {
++      globalForDb.memoryProviderData.nextArticleId = this.nextArticleId;
++      console.log(`🔥 グローバルnextArticleIdを更新: ${this.nextArticleId}`);
++    } else {
++      console.error(`🚨 グローバルデータが存在しません！`);
++    }
++
+     this.articles.set(newArticle.id, newArticle);
+-    console.log(`📚 記事を保存しました: ID=${newArticle.id}, タイトル=${newArticle.convertedTitle.substring(0, 30)}...`);
++    console.log(`🔥 記事を保存完了: ID=${newArticle.id}, タイトル=${newArticle.convertedTitle.substring(0, 30)}...`);
++    console.log(`🔥 保存後の記事数: ${this.articles.size}件`);
++    console.log(`🔥 保存後のID一覧:`, Array.from(this.articles.keys()));
++    
++    // グローバルデータの整合性チェック
++    if (globalForDb.memoryProviderData) {
++      console.log(`🔥 グローバル記事数: ${globalForDb.memoryProviderData.articles.size}件`);
++    }
++    
+     return newArticle;
+   }
+ 
+diff --git a/src/lib/database/supabase.ts b/src/lib/database/supabase.ts
+index 1cfae92..2610581 100644
+--- a/src/lib/database/supabase.ts
++++ b/src/lib/database/supabase.ts
+@@ -204,6 +204,21 @@ export class SupabaseProvider implements DatabaseProvider {
+   // リアクション操作
+   async addReaction(articleId: number, userId: string, reaction: string): Promise<boolean> {
+     try {
++      // まず既存のリアクションをチェック
++      const { data: existingReaction } = await this.client
++        .from('article_reactions')
++        .select('*')
++        .eq('article_id', articleId)
++        .eq('user_id', userId)
++        .eq('reaction', reaction)
++        .single();
++
++      // 既に存在する場合は成功として返す
++      if (existingReaction) {
++        return true;
++      }
++
++      // 存在しない場合は新規追加
+       const { error } = await this.client
+         .from('article_reactions')
+         .insert([{
+@@ -214,6 +229,10 @@ export class SupabaseProvider implements DatabaseProvider {
+         }]);
+ 
+       if (error) {
++        // 重複エラーの場合は成功として扱う
++        if (error.code === '23505') {
++          return true;
++        }
+         throw new DatabaseError(`リアクション追加エラー: ${error.message}`, error.code);
+       }
+ 
+-- 
+2.42.0
+

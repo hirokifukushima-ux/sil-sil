@@ -142,7 +142,7 @@ export default function KidsNews() {
               hasRead: article.hasRead,
               content: article.convertedContent,
               reactions: article.reactions || [],
-              image: (article as any).image,
+              image: (article as { image?: string }).image,
               createdAt: article.createdAt,
               formattedDate: formatDate(article.createdAt)
             };
@@ -459,7 +459,7 @@ export default function KidsNews() {
                   </div>
                   <div className="text-sm text-gray-500 text-right">
                     <div className="mb-1">{article.readTime}</div>
-                    <div className="text-xs">{(article as any).formattedDate}</div>
+                    <div className="text-xs">{(article as { formattedDate?: string }).formattedDate}</div>
                   </div>
                 </div>
 

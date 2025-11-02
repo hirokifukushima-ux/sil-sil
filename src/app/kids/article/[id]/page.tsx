@@ -58,7 +58,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         const localArticles = localStorage.getItem('convertedArticles');
         if (localArticles) {
           const articles = JSON.parse(localArticles);
-          const foundLocalArticle = articles.find((a: any) => a.id.toString() === id);
+          const foundLocalArticle = articles.find((a: { id: string | number }) => a.id.toString() === id);
           if (foundLocalArticle) {
             setArticle({
               id: foundLocalArticle.id,

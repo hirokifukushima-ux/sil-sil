@@ -45,7 +45,7 @@ async function fetchRSSFeed(url: string, categoryName: string): Promise<NewsItem
       description: item.contentSnippet || item.description || '',
       pubDate: item.pubDate || new Date().toISOString(),
       category: categoryName,
-      thumbnail: (item as any).thumbnail?.url || (item as any)['media:thumbnail']?.url
+      thumbnail: (item as { thumbnail?: { url?: string }; 'media:thumbnail'?: { url?: string } }).thumbnail?.url || (item as { thumbnail?: { url?: string }; 'media:thumbnail'?: { url?: string } })['media:thumbnail']?.url
     }));
     
     console.log(`✅ RSS取得完了: ${categoryName} - ${items.length}件`);
