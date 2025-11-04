@@ -1,13 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { JSDOM } from 'jsdom';
 
+// フォールバック記事作成関数
+function createFallbackArticle(url: string, html?: string): YahooArticleDetail {
+  let title = 'Yahoo!ニュースの記事';
+  let content = 'この記事の詳細内容を取得できませんでした。元記事をご確認ください。';
+  
+  if (html) {
+    // 正規表現でタイトルを抽出
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) {
+      title = titleMatch[1].replace(/\s*-\s*Yahoo!ニュース.*$/, '').trim();
+    }
+    
+    // 基本的なメタタグ情報を抽出
+    const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+    if (descMatch) {
+      content = descMatch[1];
+    }
+  }
+  
+  return {
+    title,
+    content,
+    publishedAt: new Date().toISOString(),
+    summary: content.substring(0, 100),
+    url,
+    source: 'Yahoo!ニュース'
+  };
+}
+
 async function getActualArticleUrl(pickupUrl: string): Promise<string> {
   try {
     const response = await fetch(pickupUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
-    });
+      },
+      timeout: 10000 // 10秒のタイムアウト
+    } as any);
     
     if (!response.ok) {
       console.warn('pickup URLの取得に失敗、元URLを使用');
@@ -84,25 +114,40 @@ async function scrapeYahooArticle(url: string): Promise<YahooArticleDetail> {
     
     // pickup URLの場合、実際の記事URLを取得
     if (url.includes('/pickup/')) {
-      console.log('🔍 pickup URLを検出、実際の記事URLを取得中...');
-      targetUrl = await getActualArticleUrl(url);
-      console.log(`📰 実際の記事URL: ${targetUrl}`);
+      try {
+        console.log('🔍 pickup URLを検出、実際の記事URLを取得中...');
+        targetUrl = await getActualArticleUrl(url);
+        console.log(`📰 実際の記事URL: ${targetUrl}`);
+      } catch (error) {
+        console.warn('pickup URL解析に失敗、元URLを使用:', error);
+        targetUrl = url;
+      }
     }
     
     // フェッチ
     const response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
-    });
+      },
+      timeout: 15000 // 15秒のタイムアウト
+    } as any);
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
     const html = await response.text();
-    const dom = new JSDOM(html);
-    const document = dom.window.document;
+    
+    // JSDOMを安全に使用
+    let document: Document;
+    try {
+      const dom = new JSDOM(html);
+      document = dom.window.document;
+    } catch (jsdomError) {
+      console.error('JSDOM初期化エラー:', jsdomError);
+      // フォールバック：基本的な正規表現でタイトルを抽出
+      return createFallbackArticle(url, html);
+    }
     
     // デバッグ：ページの主要な構造を確認
     console.log('🔍 Yahoo!ページ構造デバッグ:');
@@ -385,7 +430,8 @@ async function scrapeYahooArticle(url: string): Promise<YahooArticleDetail> {
     
   } catch (error) {
     console.error(`❌ Yahoo!記事スクレイピングエラー: ${url}`, error);
-    throw error;
+    // エラー時もフォールバック記事を返す
+    return createFallbackArticle(url);
   }
 }
 

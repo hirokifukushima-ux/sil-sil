@@ -98,30 +98,37 @@ export default function NewsListPage() {
           
           // Yahoo!記事詳細APIから完全タイトルを取得
           const response = await fetch(`/api/news/yahoo-detail?url=${encodeURIComponent(news.link)}`);
-          const result = await response.json();
           
-          if (result.success && result.article.title) {
-            setFullTitles(prev => ({
-              ...prev,
-              [news.link]: result.article.title
-            }));
+          if (response.ok) {
+            const result = await response.json();
             
-            // 画像も同時に取得
-            if (result.article.image) {
-              setArticleImages(prev => ({
+            if (result.success && result.article?.title) {
+              setFullTitles(prev => ({
                 ...prev,
-                [news.link]: result.article.image
+                [news.link]: result.article.title
               }));
+              
+              // 画像も同時に取得
+              if (result.article.image) {
+                setArticleImages(prev => ({
+                  ...prev,
+                  [news.link]: result.article.image
+                }));
+              }
+              
+              console.log(`✅ 完全タイトル取得完了: ${result.article.title.substring(0, 30)}...`);
+            } else {
+              console.warn(`完全タイトル取得失敗: ${news.link}`, result.error);
             }
-            
-            console.log(`✅ 完全タイトル取得完了: ${result.article.title.substring(0, 30)}...`);
+          } else {
+            console.warn(`完全タイトル取得HTTPエラー: ${response.status} ${news.link}`);
           }
         } catch (error) {
           console.warn(`完全タイトル取得エラー: ${news.link}`, error);
         }
         
         // 連続リクエストを避けるため少し待機
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
