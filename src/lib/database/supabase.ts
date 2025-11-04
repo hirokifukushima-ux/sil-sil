@@ -403,7 +403,7 @@ export class SupabaseProvider implements DatabaseProvider {
   }
 
   // データ変換ヘルパー
-  private transformArticleFromDB(dbArticle: any): Article {
+  private transformArticleFromDB(dbArticle: Record<string, any>): Article {
     return {
       id: dbArticle.id,
       originalUrl: dbArticle.original_url,
@@ -425,8 +425,8 @@ export class SupabaseProvider implements DatabaseProvider {
     };
   }
 
-  private transformArticleToDB(article: Partial<Article>): any {
-    const dbArticle: any = {};
+  private transformArticleToDB(article: Partial<Article>): Record<string, any> {
+    const dbArticle: Record<string, any> = {};
 
     if (article.originalUrl !== undefined) dbArticle.original_url = article.originalUrl;
     if (article.childAge !== undefined) dbArticle.child_age = article.childAge;
@@ -452,7 +452,7 @@ export class SupabaseProvider implements DatabaseProvider {
     return dbArticle;
   }
 
-  private transformUserFromDB(dbUser: any): User {
+  private transformUserFromDB(dbUser: Record<string, any>): User {
     return {
       id: dbUser.id,
       email: dbUser.email,
@@ -464,7 +464,7 @@ export class SupabaseProvider implements DatabaseProvider {
     };
   }
 
-  private transformUserToDB(user: Partial<User>): any {
+  private transformUserToDB(user: Partial<User>): Record<string, any> {
     const dbUser: any = {};
 
     if (user.id !== undefined) dbUser.id = user.id;
@@ -484,7 +484,7 @@ export class SupabaseProvider implements DatabaseProvider {
     return dbUser;
   }
 
-  private transformReactionFromDB(dbReaction: any): ArticleReaction {
+  private transformReactionFromDB(dbReaction: Record<string, any>): ArticleReaction {
     return {
       id: dbReaction.id,
       articleId: dbReaction.article_id,
@@ -494,7 +494,7 @@ export class SupabaseProvider implements DatabaseProvider {
     };
   }
 
-  private transformQuestionFromDB(dbQuestion: any): Question {
+  private transformQuestionFromDB(dbQuestion: Record<string, any>): Question {
     return {
       id: dbQuestion.id,
       articleId: dbQuestion.article_id,
@@ -507,7 +507,7 @@ export class SupabaseProvider implements DatabaseProvider {
     };
   }
 
-  private transformQuestionToDB(question: Partial<Question>): any {
+  private transformQuestionToDB(question: Partial<Question>): Record<string, any> {
     const dbQuestion: any = {};
 
     if (question.articleId !== undefined) dbQuestion.article_id = question.articleId;
