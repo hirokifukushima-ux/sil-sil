@@ -88,51 +88,10 @@ export default function NewsListPage() {
   }, [newsItems]);
 
   const fetchFullTitles = async () => {
-    console.log('🔄 完全タイトルをバックグラウンドで取得開始...');
-    
-    for (const news of newsItems) {
-      // pickup URLのみ対象
-      if (news.link.includes('/pickup/') && !fullTitles[news.link]) {
-        try {
-          console.log(`📰 完全タイトル取得: ${news.title}...`);
-          
-          // Yahoo!記事詳細APIから完全タイトルを取得
-          const response = await fetch(`/api/news/yahoo-detail?url=${encodeURIComponent(news.link)}`);
-          
-          if (response.ok) {
-            const result = await response.json();
-            
-            if (result.success && result.article?.title) {
-              setFullTitles(prev => ({
-                ...prev,
-                [news.link]: result.article.title
-              }));
-              
-              // 画像も同時に取得
-              if (result.article.image) {
-                setArticleImages(prev => ({
-                  ...prev,
-                  [news.link]: result.article.image
-                }));
-              }
-              
-              console.log(`✅ 完全タイトル取得完了: ${result.article.title.substring(0, 30)}...`);
-            } else {
-              console.warn(`完全タイトル取得失敗: ${news.link}`, result.error);
-            }
-          } else {
-            console.warn(`完全タイトル取得HTTPエラー: ${response.status} ${news.link}`);
-          }
-        } catch (error) {
-          console.warn(`完全タイトル取得エラー: ${news.link}`, error);
-        }
-        
-        // 連続リクエストを避けるため少し待機
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-    
-    console.log('✅ 全ての完全タイトル取得完了');
+    console.log('🔄 完全タイトル取得を一時的に無効化（APIエラー対応）');
+    // Yahoo詳細APIのエラーを回避するため、一時的に無効化
+    // 基本のニュース一覧表示を優先
+    return;
   };
 
   // 記事選択処理
