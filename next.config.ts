@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    esmExternals: false,
+  },
   env: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     NEXT_PUBLIC_USE_DATABASE: process.env.NEXT_PUBLIC_USE_DATABASE,
