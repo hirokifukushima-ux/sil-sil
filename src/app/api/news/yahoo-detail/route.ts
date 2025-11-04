@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { JSDOM } from 'jsdom';
 
 // フォールバック記事作成関数
 function createFallbackArticle(url: string, html?: string): YahooArticleDetail {
@@ -35,9 +34,8 @@ async function getActualArticleUrl(pickupUrl: string): Promise<string> {
     const response = await fetch(pickupUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      },
-      timeout: 10000 // 10秒のタイムアウト
-    } as any);
+      }
+    });
     
     if (!response.ok) {
       console.warn('pickup URLの取得に失敗、元URLを使用');
@@ -45,39 +43,33 @@ async function getActualArticleUrl(pickupUrl: string): Promise<string> {
     }
     
     const html = await response.text();
-    const dom = new JSDOM(html);
-    const document = dom.window.document;
     
-    // 実際の記事URLを探す
-    const articleLinkSelectors = [
-      'a[href*="news.yahoo.co.jp/articles/"]',
-      'a[href*="/articles/"]',
-      '.sc-cNKqjZ a',
-      '.article-link',
-      '[data-ual-module="Article"] a'
+    // 正規表現で記事URLを検索
+    const articleUrlPatterns = [
+      /href=["']([^"']*news\.yahoo\.co\.jp\/articles\/[^"']*)["']/gi,
+      /href=["']([^"']*\/articles\/[^"']*)["']/gi,
+      /url=([^&\s]*news\.yahoo\.co\.jp\/articles\/[^&\s]*)/gi
     ];
     
-    for (const selector of articleLinkSelectors) {
-      const linkElement = document.querySelector(selector);
-      if (linkElement) {
-        let href = linkElement.getAttribute('href');
-        if (href) {
-          if (href.startsWith('/')) {
-            href = `https://news.yahoo.co.jp${href}`;
-          }
-          if (href.includes('/articles/')) {
-            console.log(`✅ 実際の記事URL発見: ${href}`);
-            return href;
-          }
+    for (const pattern of articleUrlPatterns) {
+      const matches = Array.from(html.matchAll(pattern));
+      for (const match of matches) {
+        let url = match[1];
+        if (url.startsWith('/')) {
+          url = `https://news.yahoo.co.jp${url}`;
+        }
+        if (url.includes('/articles/')) {
+          console.log(`✅ 実際の記事URL発見: ${url}`);
+          return url;
         }
       }
     }
     
-    // 見つからない場合はリダイレクト先を試行
-    const metaRefresh = document.querySelector('meta[http-equiv="refresh"]');
-    if (metaRefresh) {
-      const content = metaRefresh.getAttribute('content');
-      const urlMatch = content?.match(/url=(.+)/);
+    // メタリフレッシュもチェック
+    const metaRefreshMatch = html.match(/<meta[^>]*http-equiv=["']refresh["'][^>]*content=["']([^"']*)["']/i);
+    if (metaRefreshMatch) {
+      const content = metaRefreshMatch[1];
+      const urlMatch = content.match(/url=(.+)/);
       if (urlMatch) {
         const redirectUrl = urlMatch[1];
         if (redirectUrl.includes('/articles/')) {
@@ -138,271 +130,192 @@ async function scrapeYahooArticle(url: string): Promise<YahooArticleDetail> {
     
     const html = await response.text();
     
-    // JSDOMを安全に使用
-    let document: Document;
-    try {
-      const dom = new JSDOM(html);
-      document = dom.window.document;
-    } catch (jsdomError) {
-      console.error('JSDOM初期化エラー:', jsdomError);
-      // フォールバック：基本的な正規表現でタイトルを抽出
-      return createFallbackArticle(url, html);
-    }
-    
-    // デバッグ：ページの主要な構造を確認
-    console.log('🔍 Yahoo!ページ構造デバッグ:');
-    const mainElements = [
-      'article',
-      '.article',
-      '[data-ual-module="Article"]',
-      '.sc-bxHsqm',
-      '.highLight',
-      'main'
-    ];
-    
-    mainElements.forEach(selector => {
-      const element = document.querySelector(selector);
-      if (element) {
-        console.log(`  ✅ 発見: ${selector}`);
-      }
-    });
-    
-    // タイトル取得 - Yahoo!ニュースの構造に対応
-    const titleSelectors = [
-      'h1[data-ual-module="Headline"]',
-      '.sc-bxHsqm h1',
-      'article h1',
-      '.article-header h1',
-      'h1'
-    ];
-    
+    // 正規表現でタイトルを抽出
     let title = '';
-    for (const selector of titleSelectors) {
-      const titleElement = document.querySelector(selector);
-      if (titleElement?.textContent?.trim()) {
-        title = titleElement.textContent.trim();
-        console.log(`✅ タイトル取得成功: ${selector}`);
+    const titlePatterns = [
+      /<h1[^>]*data-ual-module=["']Headline["'][^>]*>([^<]+)<\/h1>/i,
+      /<h1[^>]*class="[^"]*sc-[^"]*"[^>]*>([^<]+)<\/h1>/i,
+      /<h1[^>]*>([^<]+)<\/h1>/i,
+      /<title[^>]*>([^<]+)<\/title>/i
+    ];
+    
+    for (const pattern of titlePatterns) {
+      const match = html.match(pattern);
+      if (match && match[1].trim()) {
+        title = match[1].trim().replace(/\s*-\s*Yahoo!ニュース.*$/, '');
+        console.log(`✅ タイトル取得成功: ${title.substring(0, 50)}...`);
         break;
       }
     }
     
     if (!title) {
-      title = document.title || 'タイトル不明';
-    }
-    
-    // 本文取得 - Yahoo!ニュースの構造に対応
-    const contentSelectors = [
-      '.highLight p',                              // Yahoo!ニュースの記事本文（旧構造）
-      '[data-ual-module="Article"] p',             // データ属性ベース
-      '.sc-dmlJSK p',                             // 新しいスタイルコンポーネント
-      '.sc-bxHsqm .sc-eCBpNj p',                  // スタイルコンポーネント
-      '.article-body p',                           // 一般的な構造
-      '.article-content p',
-      '.content p',
-      '.textBody p',
-      'article div p',                             // より広範囲
-      'main p'
-    ];
-    
-    let contentElements: NodeListOf<Element> | null = null;
-    let selectedSelector = '';
-    
-    for (const selector of contentSelectors) {
-      contentElements = document.querySelectorAll(selector);
-      if (contentElements.length > 0) {
-        selectedSelector = selector;
-        console.log(`✅ コンテンツ取得成功: ${selector} - ${contentElements.length}個の段落`);
-        break;
+      const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+      if (ogTitleMatch) {
+        title = ogTitleMatch[1].trim();
+      } else {
+        title = 'Yahoo!ニュースの記事';
       }
     }
     
+    // 正規表現で本文を抽出
     let content = '';
-    if (contentElements && contentElements.length > 0) {
-      const contentParts: string[] = [];
-      contentElements.forEach((element, index) => {
-        const text = element.textContent?.trim();
-        if (text && 
-            text.length > 15 &&                    // より短い文も含める
-            !text.includes('シェア') && 
-            !text.includes('ツイート') &&
-            !text.includes('関連記事') &&
-            !text.includes('続きを読む') &&
-            !text.includes('Yahoo!ニュース個人') &&  // 固有名詞を除く
-            !text.includes('※この記事は') &&
-            !text.includes('写真:') &&
-            !text.includes('画像:') &&
-            (text.includes('。') || text.includes('、') || text.length > 50) &&  // 日本語の文章判定を緩和
-            !text.match(/^[a-zA-Z\s\.\(\)]+$/)) {  // 英語のみを除外
-          contentParts.push(text);
-          if (index < 5) {
-            console.log(`📝 段落${index + 1}: ${text.substring(0, 50)}...`);
-          }
-        }
-      });
-      content = contentParts.join('\n\n');
-      console.log(`📄 最終コンテンツ長: ${content.length}文字, 段落数: ${contentParts.length}`);
-    }
-    
-    // コンテンツが取得できない場合の代替処理
-    if (!content || content.length < 100) {
-      console.log('⚠️ Yahoo!記事本文取得失敗、代替方法を試行');
-      
-      // より広範囲な取得を試行
-      const allParagraphs = document.querySelectorAll('p');
-      const fallbackContent: string[] = [];
-      
-      allParagraphs.forEach(p => {
-        const text = p.textContent?.trim();
-        if (text && 
-            text.length > 30 &&
-            text.includes('。') &&
-            !text.includes('シェア') &&
-            !text.includes('ツイート') &&
-            !text.includes('Yahoo!') &&
-            !text.includes('配信')) {
-          fallbackContent.push(text);
-        }
-      });
-      
-      content = fallbackContent.slice(0, 10).join('\n\n');
-      console.log(`📄 代替コンテンツ長: ${content.length}文字`);
-    }
-    
-    // 画像取得 - 記事内容に関連する画像を優先的に選択
-    const imageSelectors = [
-      'article img',
-      '.article img', 
-      '.highLight img',
-      '[data-ual-module="Article"] img',
-      '.article-body img',
-      '.content img',
-      'main img'
+    const contentPatterns = [
+      // Yahoo!ニュース特有のパターン
+      /<div[^>]*class="[^"]*highLight[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*data-ual-module=["']Article["'][^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*sc-[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<article[^>]*>([\s\S]*?)<\/article>/gi,
+      /<main[^>]*>([\s\S]*?)<\/main>/gi
     ];
     
-    let image = '';
-    let bestImage = '';
-    
-    // 全ての画像をチェックして最適なものを選択
-    for (const selector of imageSelectors) {
-      const imgElements = document.querySelectorAll(selector);
-      
-      for (const imgElement of imgElements) {
-        const src = imgElement.getAttribute('src');
-        if (!src) continue;
+    for (const pattern of contentPatterns) {
+      const matches = Array.from(html.matchAll(pattern));
+      if (matches.length > 0) {
+        const extractedContent = matches.map(match => {
+          // HTMLタグを除去
+          const text = match[1]
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/&[^;]+;/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          // フィルタリング
+          const paragraphs = text.split(/[。！？]/).filter(p => {
+            const clean = p.trim();
+            return clean.length > 15 &&
+                   !clean.includes('シェア') &&
+                   !clean.includes('ツイート') &&
+                   !clean.includes('関連記事') &&
+                   !clean.includes('続きを読む') &&
+                   !clean.includes('Yahoo!ニュース個人') &&
+                   !clean.includes('※この記事は') &&
+                   !clean.includes('写真') &&
+                   !clean.includes('画像') &&
+                   !clean.match(/^[a-zA-Z\s\.\(\)]+$/);
+          });
+          
+          return paragraphs.join('。');
+        }).join('\n\n');
         
-        let fullSrc = src;
-        if (!fullSrc.startsWith('http')) {
-          fullSrc = `https:${fullSrc}`;
-        }
-        
-        // 媒体ロゴや小さい画像を除外
-        const alt = imgElement.getAttribute('alt') || '';
-        const width = imgElement.getAttribute('width') || imgElement.style.width || '';
-        const height = imgElement.getAttribute('height') || imgElement.style.height || '';
-        
-        // 除外条件を強化
-        const isLogo = (
-          fullSrc.includes('logo') ||
-          fullSrc.includes('icon') ||
-          fullSrc.includes('favicon') ||
-          alt.toLowerCase().includes('logo') ||
-          alt.toLowerCase().includes('icon') ||
-          fullSrc.includes('avatar') ||
-          fullSrc.includes('profile') ||
-          // 媒体名を含む画像URLを除外
-          fullSrc.includes('afp') ||
-          fullSrc.includes('sankei') ||
-          fullSrc.includes('asahi') ||
-          fullSrc.includes('mainichi') ||
-          fullSrc.includes('yomiuri') ||
-          fullSrc.includes('nikkei') ||
-          fullSrc.includes('kyodo') ||
-          fullSrc.includes('jiji') ||
-          fullSrc.includes('reuters') ||
-          fullSrc.includes('cnn') ||
-          fullSrc.includes('bloomberg') ||
-          // ファイル名パターンで除外
-          fullSrc.match(/\/(logo|icon|favicon|brand|corp|company|media)[\w\-]*\.(jpg|jpeg|png|gif|svg)/i) ||
-          // 固定サイズの小さい画像（大抵ロゴ）
-          fullSrc.includes('150x') ||
-          fullSrc.includes('200x') ||
-          fullSrc.includes('100x') ||
-          fullSrc.includes('50x')
-        );
-        
-        const isSmall = (
-          (width && parseInt(width) < 150) ||
-          (height && parseInt(height) < 150)
-        );
-        
-        // 広告やSNS関連の画像を除外
-        const isAd = (
-          fullSrc.includes('ad') ||
-          fullSrc.includes('banner') ||
-          fullSrc.includes('promo') ||
-          fullSrc.includes('sns') ||
-          fullSrc.includes('social') ||
-          fullSrc.includes('twitter') ||
-          fullSrc.includes('facebook') ||
-          fullSrc.includes('youtube') ||
-          fullSrc.includes('instagram') ||
-          fullSrc.includes('tiktok')
-        );
-        
-        // Yahoo!固有の除外パターン
-        const isYahooSystem = (
-          fullSrc.includes('y.yimg.jp') && (
-            fullSrc.includes('/default/') ||
-            fullSrc.includes('/common/') ||
-            fullSrc.includes('/ui/') ||
-            fullSrc.includes('/logo/') ||
-            fullSrc.includes('/icon/')
-          )
-        );
-        
-        if (!isLogo && !isSmall && !isAd && !isYahooSystem) {
-          // 最初に見つかった適切な画像を使用
-          if (!bestImage) {
-            bestImage = fullSrc;
-            console.log(`✅ 記事画像を選択: ${fullSrc.substring(0, 80)}...`);
-            break;
-          }
-        } else {
-          const reason = isLogo ? 'ロゴ/媒体' : isSmall ? '小さすぎる' : isAd ? 'ソーシャル/広告' : 'Yahooシステム';
-          console.log(`⚠️ 画像をスキップ: ${fullSrc.substring(0, 50)}... (理由: ${reason})`);
-        }
-      }
-      
-      if (bestImage) break;
-    }
-    
-    image = bestImage;
-    
-    // 公開日時取得
-    const timeSelectors = [
-      'time',
-      '[data-ual-module="Time"]',
-      '.article-time',
-      '.sc-time'
-    ];
-    
-    let publishedAt = new Date().toISOString();
-    for (const selector of timeSelectors) {
-      const timeElement = document.querySelector(selector);
-      if (timeElement) {
-        const datetime = timeElement.getAttribute('datetime') || timeElement.textContent?.trim();
-        if (datetime) {
-          publishedAt = datetime;
+        if (extractedContent.length > content.length && extractedContent.length > 100) {
+          content = extractedContent;
+          console.log(`✅ コンテンツ取得成功: ${content.length}文字`);
           break;
         }
       }
     }
     
-    // 配信元取得
-    const sourceElement = document.querySelector('[data-ual-module="Source"]') ||
-                         document.querySelector('.source') ||
-                         document.querySelector('.article-source');
-    const source = sourceElement?.textContent?.trim() || 'Yahoo!ニュース';
+    // フォールバック：段落タグから直接抽出
+    if (!content || content.length < 100) {
+      console.log('⚠️ 代替方法でコンテンツ取得を試行');
+      const paragraphMatches = Array.from(html.matchAll(/<p[^>]*>([^<]+)<\/p>/gi));
+      const paragraphs = paragraphMatches
+        .map(match => match[1].replace(/&[^;]+;/g, ' ').trim())
+        .filter(text => {
+          return text.length > 30 &&
+                 text.includes('。') &&
+                 !text.includes('シェア') &&
+                 !text.includes('ツイート') &&
+                 !text.includes('Yahoo!') &&
+                 !text.includes('配信');
+        });
+      
+      content = paragraphs.slice(0, 10).join('\n\n');
+      console.log(`📄 代替コンテンツ長: ${content.length}文字`);
+    }
+    
+    // 正規表現で画像を抽出
+    let image = '';
+    
+    // OGイメージを優先的に取得
+    const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+    if (ogImageMatch) {
+      let ogImage = ogImageMatch[1];
+      if (!ogImage.startsWith('http')) {
+        ogImage = `https:${ogImage}`;
+      }
+      
+      // ロゴやシステム画像を除外
+      const isSystemImage = (
+        ogImage.includes('logo') ||
+        ogImage.includes('icon') ||
+        ogImage.includes('favicon') ||
+        ogImage.includes('/default/') ||
+        ogImage.includes('/common/') ||
+        ogImage.includes('/ui/')
+      );
+      
+      if (!isSystemImage) {
+        image = ogImage;
+        console.log(`✅ OG画像を使用: ${image.substring(0, 80)}...`);
+      }
+    }
+    
+    // OG画像がない場合、記事内の画像を検索
+    if (!image) {
+      const imgMatches = Array.from(html.matchAll(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi));
+      for (const imgMatch of imgMatches) {
+        let src = imgMatch[1];
+        if (!src.startsWith('http')) {
+          src = `https:${src}`;
+        }
+        
+        // 除外条件
+        const isExcluded = (
+          src.includes('logo') ||
+          src.includes('icon') ||
+          src.includes('favicon') ||
+          src.includes('avatar') ||
+          src.includes('profile') ||
+          src.includes('ad') ||
+          src.includes('banner') ||
+          src.includes('150x') ||
+          src.includes('100x') ||
+          src.includes('50x') ||
+          src.includes('/default/') ||
+          src.includes('/common/') ||
+          src.includes('/ui/')
+        );
+        
+        if (!isExcluded) {
+          image = src;
+          console.log(`✅ 記事画像を使用: ${image.substring(0, 80)}...`);
+          break;
+        }
+      }
+    }
+    
+    // 正規表現で公開日時を取得
+    let publishedAt = new Date().toISOString();
+    const timePatterns = [
+      /<time[^>]*datetime=["']([^"']+)["']/i,
+      /<time[^>]*>([^<]+)<\/time>/i,
+      /<div[^>]*data-ual-module=["']Time["'][^>]*>([^<]+)<\/div>/i
+    ];
+    
+    for (const pattern of timePatterns) {
+      const match = html.match(pattern);
+      if (match && match[1].trim()) {
+        publishedAt = match[1].trim();
+        break;
+      }
+    }
+    
+    // 正規表現で配信元を取得
+    let source = 'Yahoo!ニュース';
+    const sourcePatterns = [
+      /<div[^>]*data-ual-module=["']Source["'][^>]*>([^<]+)<\/div>/i,
+      /<div[^>]*class="[^"]*source[^"]*"[^>]*>([^<]+)<\/div>/i,
+      /<span[^>]*class="[^"]*source[^"]*"[^>]*>([^<]+)<\/span>/i
+    ];
+    
+    for (const pattern of sourcePatterns) {
+      const match = html.match(pattern);
+      if (match && match[1].trim()) {
+        source = match[1].trim();
+        break;
+      }
+    }
     
     // 要約作成
     const summary = content.length > 100 
