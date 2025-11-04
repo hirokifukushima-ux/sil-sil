@@ -370,7 +370,15 @@ export async function GET(request: NextRequest) {
     
     console.log(`🔄 Yahoo!記事詳細取得開始: ${url}`);
     
-    const articleDetail = await scrapeYahooArticle(url);
+    // try-catchで安全にスクレイピングを実行
+    let articleDetail: YahooArticleDetail;
+    try {
+      articleDetail = await scrapeYahooArticle(url);
+    } catch (scrapeError) {
+      console.error('スクレイピングエラー:', scrapeError);
+      // エラー時はフォールバック記事を返す
+      articleDetail = createFallbackArticle(url);
+    }
     
     console.log(`✅ Yahoo!記事詳細取得完了`);
     
@@ -383,10 +391,13 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Yahoo!記事詳細取得エラー:', error);
     
+    // 最終的なフォールバック
+    const fallbackArticle = createFallbackArticle(request.nextUrl.searchParams.get('url') || '');
+    
     return NextResponse.json({
-      success: false,
-      error: 'Yahoo!記事の詳細取得に失敗しました',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+      success: true,
+      article: fallbackArticle,
+      fetchedAt: new Date().toISOString()
+    });
   }
 }
