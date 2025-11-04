@@ -47,11 +47,25 @@ export default function ArticleDetailModal({
       const isYahooNews = articleUrl.includes('news.yahoo.co.jp');
       
       if (isYahooNews) {
-        // Yahoo!ニュースの場合、APIを使わずに基本情報を生成
+        // Yahoo!ニュースの場合、URLから記事情報を推測
         console.log('Yahoo!ニュース: 基本情報で表示');
+        
+        // URLから記事IDを抽出
+        const urlParts = articleUrl.split('/');
+        const articleId = urlParts[urlParts.length - 1];
+        
+        // pickup URLの場合は簡易的な情報を表示
+        let title = 'Yahoo!ニュースの記事';
+        let content = 'この記事の詳細を表示するには、下の「元記事を表示」ボタンから元記事をご確認ください。\n\n現在、記事の詳細取得機能を改善中のため、一時的に簡易表示となっております。';
+        
+        if (articleUrl.includes('/pickup/')) {
+          title = 'Yahoo!ニュース - 注目記事';
+          content = 'こちらは Yahoo!ニュースの注目記事です。\n\n記事の詳細内容は、下の「元記事を表示」ボタンから元記事でご確認いただけます。\n\n※ 現在、記事の自動取得機能を改善中です。';
+        }
+        
         const fallbackArticle: ArticleDetail = {
-          title: 'Yahoo!ニュースの記事',
-          content: 'この記事の詳細を表示するには、元記事リンクからご確認ください。現在、記事の詳細取得機能を改善中です。',
+          title,
+          content,
           publishedAt: new Date().toISOString(),
           summary: 'Yahoo!ニュースの記事です',
           url: articleUrl,
