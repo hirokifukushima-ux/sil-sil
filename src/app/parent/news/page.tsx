@@ -315,24 +315,12 @@ export default function NewsListPage() {
                             handleShowDetail(news);
                           }}
                         >
-                          {articleImage ? (
-                            <img 
-                              src={articleImage} 
-                              alt={displayTitle}
-                              className="w-full h-full object-cover rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-gray-100 hover:to-gray-200 transition-colors">
-                              {!isFullTitleLoaded && news.link.includes('/pickup/') ? (
-                                <span className="text-gray-400 text-lg animate-pulse">📷</span>
-                              ) : (
-                                <span className="text-gray-400 text-lg">🖼️</span>
-                              )}
+                          <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-blue-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-indigo-100 hover:to-blue-200 transition-colors">
+                            <div className="text-center">
+                              <span className="text-indigo-400 text-2xl mb-1 block">📰</span>
+                              <span className="text-indigo-600 text-xs font-medium">ニュース</span>
                             </div>
-                          )}
+                          </div>
                         </div>
                         
                         <div className="flex-1 min-w-0">

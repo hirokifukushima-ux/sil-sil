@@ -47,37 +47,19 @@ export default function ArticleDetailModal({
       const isYahooNews = articleUrl.includes('news.yahoo.co.jp');
       
       if (isYahooNews) {
-        // Yahoo!ニュースの場合、修正されたAPIを使用
-        console.log('Yahoo!ニュース: 修正されたAPIで取得');
-        const apiUrl = `/api/news/yahoo-detail?url=${encodeURIComponent(articleUrl)}`;
+        // Yahoo!ニュースの場合、APIを使わずに基本情報のみ表示
+        console.log('Yahoo!ニュース: API使用せず基本情報のみ表示');
         
-        try {
-          const response = await fetch(apiUrl);
-          
-          if (response.ok) {
-            const result = await response.json();
-            
-            if (result.success && result.article) {
-              setArticleDetail(result.article);
-              console.log(`✅ Yahoo!記事詳細取得完了`);
-              return;
-            }
-          }
-        } catch (error) {
-          console.warn('Yahoo!APIエラー、フォールバックを使用:', error);
-        }
-        
-        // APIが失敗した場合のフォールバック
         const fallbackArticle: ArticleDetail = {
-          title: 'Yahoo!ニュース - 注目記事',
-          content: 'この記事の詳細を表示するには、下の「元記事を表示」ボタンから元記事をご確認ください。',
+          title: 'Yahoo!ニュース',
+          content: 'この記事の詳細内容は、下の「元記事を表示」ボタンから元記事でご確認ください。\n\nYahoo!ニュースの記事は元サイトで最新の情報をご覧いただけます。',
           publishedAt: new Date().toISOString(),
           summary: 'Yahoo!ニュースの記事です',
           url: articleUrl,
           source: 'Yahoo!ニュース'
         };
         setArticleDetail(fallbackArticle);
-        console.log(`✅ フォールバック記事詳細を表示`);
+        console.log(`✅ Yahoo!ニュース基本情報を表示`);
         return;
       }
       
