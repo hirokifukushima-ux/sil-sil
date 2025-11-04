@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Parser from 'rss-parser';
-import { JSDOM } from 'jsdom';
 
 
 const parser = new Parser({
@@ -33,20 +32,59 @@ const YAHOO_RSS_FEEDS = {
   science: 'https://news.yahoo.co.jp/rss/topics/science.xml',   // 科学
 };
 
+// 簡易的にサムネイル画像を取得する関数
+async function getSimpleThumbnail(link: string): Promise<string | undefined> {
+  try {
+    // pickup URLの場合、基本的なfetchを試行
+    if (link.includes('/pickup/')) {
+      const response = await fetch(link, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        timeout: 5000
+      } as any);
+      
+      if (response.ok) {
+        const html = await response.text();
+        // OGイメージを検索
+        const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+        if (ogImageMatch) {
+          return ogImageMatch[1].startsWith('http') ? ogImageMatch[1] : `https:${ogImageMatch[1]}`;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`サムネイル取得失敗: ${link}`, error);
+  }
+  return undefined;
+}
+
 async function fetchRSSFeed(url: string, categoryName: string): Promise<NewsItem[]> {
   try {
     console.log(`📡 RSS取得開始: ${categoryName} - ${url}`);
     
     const feed = await parser.parseURL(url);
     
-    const items: NewsItem[] = feed.items.map((item) => ({
-      title: item.title || '',
-      link: item.link || '',
-      description: item.contentSnippet || item.description || '',
-      pubDate: item.pubDate || new Date().toISOString(),
-      category: categoryName,
-      thumbnail: (item as { thumbnail?: { url?: string }; 'media:thumbnail'?: { url?: string } }).thumbnail?.url || (item as { thumbnail?: { url?: string }; 'media:thumbnail'?: { url?: string } })['media:thumbnail']?.url
-    }));
+    const items: NewsItem[] = await Promise.all(
+      feed.items.map(async (item) => {
+        // RSSから基本的なサムネイル情報を取得
+        let thumbnail = (item as any).thumbnail?.url || (item as any)['media:thumbnail']?.url;
+        
+        // RSSにサムネイルがない場合、簡易取得を試行（最初の数件のみ）
+        if (!thumbnail && feed.items.indexOf(item) < 3) {
+          thumbnail = await getSimpleThumbnail(item.link || '');
+        }
+        
+        return {
+          title: item.title || '',
+          link: item.link || '',
+          description: item.contentSnippet || item.description || '',
+          pubDate: item.pubDate || new Date().toISOString(),
+          category: categoryName,
+          thumbnail
+        };
+      })
+    );
     
     console.log(`✅ RSS取得完了: ${categoryName} - ${items.length}件`);
     return items;
