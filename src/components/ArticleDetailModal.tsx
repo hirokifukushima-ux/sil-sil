@@ -43,14 +43,43 @@ export default function ArticleDetailModal({
     try {
       console.log(`🔄 記事詳細取得開始: ${articleUrl}`);
       
-      // Yahoo!ニュースかNHKかを判定してAPIを選択
+      // Yahoo!ニュースの場合は一時的に基本情報のみ表示
       const isYahooNews = articleUrl.includes('news.yahoo.co.jp');
-      const apiUrl = isYahooNews 
-        ? `/api/news/yahoo-detail?url=${encodeURIComponent(articleUrl)}`
-        : `/api/news/detail?url=${encodeURIComponent(articleUrl)}`;
       
+      if (isYahooNews) {
+        // Yahoo!ニュースの場合、APIを使わずに基本情報を生成
+        console.log('Yahoo!ニュース: 基本情報で表示');
+        const fallbackArticle: ArticleDetail = {
+          title: 'Yahoo!ニュースの記事',
+          content: 'この記事の詳細を表示するには、元記事リンクからご確認ください。現在、記事の詳細取得機能を改善中です。',
+          publishedAt: new Date().toISOString(),
+          summary: 'Yahoo!ニュースの記事です',
+          url: articleUrl,
+          source: 'Yahoo!ニュース'
+        };
+        setArticleDetail(fallbackArticle);
+        console.log(`✅ フォールバック記事詳細を表示`);
+        return;
+      }
+      
+      // その他のニュースサイト用
+      const apiUrl = `/api/news/detail?url=${encodeURIComponent(articleUrl)}`;
       const response = await fetch(apiUrl);
-      const result = await response.json();
+      
+      // レスポンスがOKでない場合
+      if (!response.ok) {
+        console.warn(`API応答エラー: ${response.status}`);
+        throw new Error(`APIエラー: ${response.status}`);
+      }
+      
+      // JSONパースを安全に実行
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('JSON解析エラー:', jsonError);
+        throw new Error('サーバーから無効な応答が返されました');
+      }
       
       if (result.success) {
         setArticleDetail(result.article);
