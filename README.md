@@ -151,3 +151,5 @@ MIT License
 ## 📞 サポート
 
 問題や質問がある場合は、GitHubのIssuesをご利用ください。
+
+<!-- Force deploy trigger -->
