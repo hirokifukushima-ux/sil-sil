@@ -318,7 +318,7 @@ export default function NewsListPage() {
                           <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-blue-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-indigo-100 hover:to-blue-200 transition-colors">
                             <div className="text-center">
                               <span className="text-indigo-400 text-2xl mb-1 block">📰</span>
-                              <span className="text-indigo-600 text-xs font-medium">ニュース</span>
+                              <span className="text-indigo-600 text-xs font-medium">NEWS</span>
                             </div>
                           </div>
                         </div>
