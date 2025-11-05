@@ -43,18 +43,30 @@ export default function ArticleDetailModal({
     try {
       console.log(`🔄 記事詳細取得開始: ${articleUrl}`);
       
-      // 全てのニュースサイトでフォールバック表示を使用
-      const fallbackArticle: ArticleDetail = {
-        title: 'ニュース記事',
-        content: 'この記事の詳細内容は、下の「元記事を表示」ボタンから元記事でご確認ください。\n\n元記事で最新の詳細情報をご覧いただけます。',
-        publishedAt: new Date().toISOString(),
-        summary: 'ニュース記事の詳細です',
-        url: articleUrl,
-        source: 'ニュースサイト'
-      };
-      setArticleDetail(fallbackArticle);
-      console.log(`✅ フォールバック記事情報を表示`);
+      const apiUrl = `/api/news/detail?url=${encodeURIComponent(articleUrl)}`;
+      const response = await fetch(apiUrl);
       
+      // レスポンスがOKでない場合
+      if (!response.ok) {
+        console.warn(`API応答エラー: ${response.status}`);
+        throw new Error(`APIエラー: ${response.status}`);
+      }
+      
+      // JSONパースを安全に実行
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        console.error('JSON解析エラー:', jsonError);
+        throw new Error('サーバーから無効な応答が返されました');
+      }
+      
+      if (result.success) {
+        setArticleDetail(result.article);
+        console.log(`✅ 記事詳細取得完了: ${result.article.title}`);
+      } else {
+        throw new Error(result.error || '記事の詳細取得に失敗しました');
+      }
     } catch (error) {
       console.error('記事詳細取得エラー:', error);
       setError(error instanceof Error ? error.message : '記事の詳細取得に失敗しました');

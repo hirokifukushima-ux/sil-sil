@@ -6,7 +6,10 @@ const parser = new Parser({
   customFields: {
     item: [
       ['media:thumbnail', 'thumbnail'],
-      ['media:content', 'mediaContent'],
+      ['media:content', 'mediaContent'], 
+      ['media:group', 'mediaGroup'],
+      ['enclosure', 'enclosure'],
+      ['description', 'description']
     ]
   }
 });
@@ -75,24 +78,42 @@ async function fetchRSSFeed(url: string, categoryName: string): Promise<NewsItem
         // RSSから基本的なサムネイル情報を取得
         let thumbnail = (item as any).thumbnail?.url || (item as any)['media:thumbnail']?.url;
         
+        // descriptionからの画像URL抽出
+        if (!thumbnail && item.content) {
+          const imgMatch = item.content.match(/<img[^>]*src=["']([^"']+)["']/i);
+          if (imgMatch) {
+            thumbnail = imgMatch[1];
+          }
+        }
+        
+        // contentSnippetからの画像URL抽出
+        if (!thumbnail && item.contentSnippet) {
+          const imgMatch = item.contentSnippet.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/i);
+          if (imgMatch) {
+            thumbnail = imgMatch[0];
+          }
+        }
+        
         // RSSメディア要素からの取得を試行
         if (!thumbnail) {
           const mediaContent = (item as any)['media:content'];
-          if (mediaContent && mediaContent.$ && mediaContent.$.url) {
+          if (Array.isArray(mediaContent) && mediaContent.length > 0) {
+            thumbnail = mediaContent[0].$ ? mediaContent[0].$.url : mediaContent[0];
+          } else if (mediaContent && mediaContent.$ && mediaContent.$.url) {
             thumbnail = mediaContent.$.url;
           }
         }
         
         // enclosureからの取得を試行
-        if (!thumbnail && (item as any).enclosure && (item as any).enclosure.url) {
-          const enclosureUrl = (item as any).enclosure.url;
-          if (enclosureUrl.match(/\.(jpg|jpeg|png|gif)$/i)) {
-            thumbnail = enclosureUrl;
+        if (!thumbnail && (item as any).enclosure) {
+          const enclosure = (item as any).enclosure;
+          if (enclosure.url && enclosure.url.match(/\.(jpg|jpeg|png|gif)$/i)) {
+            thumbnail = enclosure.url;
           }
         }
         
-        // RSSにサムネイルがない場合、簡易取得を試行（最初の2件のみ）
-        if (!thumbnail && feed.items.indexOf(item) < 2) {
+        // RSSにサムネイルがない場合、簡易取得を試行（全件に対して実行）
+        if (!thumbnail) {
           thumbnail = await getSimpleThumbnail(item.link || '');
         }
         
