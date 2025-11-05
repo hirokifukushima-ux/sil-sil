@@ -315,7 +315,24 @@ export default function NewsListPage() {
                             handleShowDetail(news);
                           }}
                         >
-                          <div className="w-full h-full bg-gradient-to-br from-indigo-50 to-blue-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-indigo-100 hover:to-blue-200 transition-colors">
+                          {news.thumbnail ? (
+                            <img 
+                              src={news.thumbnail} 
+                              alt={news.title}
+                              className="w-full h-full object-cover rounded-lg border border-gray-200"
+                              onError={(e) => {
+                                // 画像読み込み失敗時はプレースホルダーを表示
+                                e.currentTarget.style.display = 'none';
+                                const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (placeholder) placeholder.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div 
+                            className={`w-full h-full bg-gradient-to-br from-indigo-50 to-blue-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-indigo-100 hover:to-blue-200 transition-colors ${
+                              news.thumbnail ? 'hidden' : 'flex'
+                            }`}
+                          >
                             <div className="text-center">
                               <span className="text-indigo-400 text-2xl mb-1 block">📰</span>
                               <span className="text-indigo-600 text-xs font-medium">NEWS</span>
