@@ -25,25 +25,39 @@ async function fetchArticleDetail(url: string): Promise<ArticleDetail> {
 
     const html = await response.text();
     
-    // Yahoo!ニュース専用のタイトル抽出
+    // Yahoo!ニュース専用のタイトル抽出（複数パターンを順次試行）
     let title = 'ニュース記事';
     const yahooTitlePatterns = [
+      // Yahoo!ニュースのメインタイトル（より具体的なパターン）
+      /<h1[^>]*class="[^"]*sc-[^"]*title[^"]*"[^>]*>([^<]+)<\/h1>/i,
+      /<h1[^>]*class="[^"]*articleHeader_title[^"]*"[^>]*>([^<]+)<\/h1>/i,
+      /<h1[^>]*class="[^"]*mainTitle[^"]*"[^>]*>([^<]+)<\/h1>/i,
+      // OGタイトル（但し、Yahoo!ニュース固有の部分を除去）
       /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
+      // 一般的なタイトルタグ
       /<title[^>]*>([^<]+)<\/title>/i,
-      /<h1[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/h1>/i,
+      // その他のh1要素
       /<h1[^>]*>([^<]+)<\/h1>/i
     ];
 
     for (const pattern of yahooTitlePatterns) {
       const match = html.match(pattern);
       if (match) {
-        title = match[1]
+        let extractedTitle = match[1]
           .replace(/\s*-\s*Yahoo!ニュース.*$/, '')
           .replace(/\s*\|\s*Yahoo!ニュース.*$/, '')
+          .replace(/\s*\(\s*Yahoo!ニュース\s*\).*$/, '')
+          .replace(/\s*\(\s*毎日新聞\s*\).*$/, '')
+          .replace(/\s*\(\s*[^)]+\s*\)$/, '') // 末尾の括弧内メディア名を除去
           .trim();
-        if (title.length > 10) break;
+        
+        if (extractedTitle.length > 10) {
+          title = extractedTitle;
+          break;
+        }
       }
     }
+
 
     // Yahoo!ニュース専用の本文抽出
     let content = '';
@@ -64,7 +78,7 @@ async function fetchArticleDetail(url: string): Promise<ArticleDetail> {
       if (match) {
         let rawContent = match[1];
         
-        // 不要な要素を除去
+        // 不要な要素を除去（改行構造を保持）
         content = rawContent
           .replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -75,17 +89,35 @@ async function fetchArticleDetail(url: string): Promise<ArticleDetail> {
           .replace(/<div[^>]*class="[^"]*ad[^"]*"[\s\S]*?<\/div>/gi, '')
           .replace(/<div[^>]*class="[^"]*sns[^"]*"[\s\S]*?<\/div>/gi, '')
           .replace(/<div[^>]*class="[^"]*share[^"]*"[\s\S]*?<\/div>/gi, '')
-          // HTMLタグを除去してテキストのみ抽出
-          .replace(/<br[^>]*>/gi, '\n')
+          .replace(/<div[^>]*class="[^"]*comment[^"]*"[\s\S]*?<\/div>/gi, '')
+          .replace(/<div[^>]*class="[^"]*related[^"]*"[\s\S]*?<\/div>/gi, '')
+          // 段落構造を保持するHTMLタグ処理
           .replace(/<\/p>/gi, '\n\n')
+          .replace(/<p[^>]*>/gi, '')
+          .replace(/<\/div>/gi, '\n')
+          .replace(/<div[^>]*>/gi, '')
+          .replace(/<br[^>]*>/gi, '\n')
+          .replace(/<\/h[1-6]>/gi, '\n\n')
+          .replace(/<h[1-6][^>]*>/gi, '')
+          .replace(/<\/li>/gi, '\n')
+          .replace(/<li[^>]*>/gi, '• ')
+          .replace(/<\/ul>/gi, '\n')
+          .replace(/<ul[^>]*>/gi, '')
+          // 残りのHTMLタグを除去
           .replace(/<[^>]+>/g, '')
+          // HTML entities をデコード
           .replace(/&nbsp;/g, ' ')
           .replace(/&amp;/g, '&')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
           .replace(/&quot;/g, '"')
-          .replace(/\s+/g, ' ')
-          .replace(/\n\s+/g, '\n')
+          .replace(/&#8203;/g, '') // ゼロ幅スペース
+          .replace(/&#x200B;/g, '') // ゼロ幅スペース
+          // 空白文字の整理（改行は保持）
+          .replace(/[ \t]+/g, ' ') // スペースとタブは1つに
+          .replace(/\n[ \t]+/g, '\n') // 行頭の空白を除去
+          .replace(/[ \t]+\n/g, '\n') // 行末の空白を除去
+          .replace(/\n{3,}/g, '\n\n') // 3つ以上の連続改行は2つに
           .trim();
         
         if (content.length > 200) break;
@@ -106,6 +138,34 @@ async function fetchArticleDetail(url: string): Promise<ArticleDetail> {
 
     if (!content || content.length < 50) {
       content = 'この記事の詳細内容は、下の「元記事を表示」ボタンから元記事でご確認ください。';
+    }
+
+    // 本文からより詳細なタイトルを抽出する試行（Yahoo!記事の場合）
+    if (url.includes('news.yahoo.co.jp') && content) {
+      // 本文の最初の数行から、より詳細なタイトルを探す
+      const lines = content.split('\n').filter(line => line.trim().length > 0);
+      
+      for (let i = 0; i < Math.min(lines.length, 5); i++) {
+        const line = lines[i].trim();
+        
+        // 日付、時間、メディア名、コメント数などの情報行をスキップ
+        if (line.match(/^\d{1,2}\/\d{1,2}\(.\)/) || // 日付パターン
+            line.match(/^\d{1,2}:\d{2}/) || // 時間パターン
+            line.includes('毎日新聞') || line.includes('朝日新聞') || 
+            line.includes('読売新聞') || line.includes('産経新聞') ||
+            line.includes('Yahoo!ニュース') ||
+            line.includes('コメント') || line.includes('件') ||
+            line.length < 20) {
+          continue;
+        }
+        
+        // より詳細で適切な長さのタイトルを見つけた場合
+        if (line.length > title.length && line.length < 200 && 
+            !line.includes('記事全文') && !line.includes('ココがポイント')) {
+          title = line;
+          break;
+        }
+      }
     }
 
     // 画像抽出（Yahoo!ニュース対応）
