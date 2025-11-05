@@ -37,12 +37,17 @@ async function getSimpleThumbnail(link: string): Promise<string | undefined> {
   try {
     // pickup URLの場合、基本的なfetchを試行
     if (link.includes('/pickup/')) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
       const response = await fetch(link, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
-        timeout: 5000
-      } as any);
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const html = await response.text();
@@ -70,8 +75,24 @@ async function fetchRSSFeed(url: string, categoryName: string): Promise<NewsItem
         // RSSから基本的なサムネイル情報を取得
         let thumbnail = (item as any).thumbnail?.url || (item as any)['media:thumbnail']?.url;
         
-        // RSSにサムネイルがない場合、簡易取得を試行（最初の数件のみ）
-        if (!thumbnail && feed.items.indexOf(item) < 3) {
+        // RSSメディア要素からの取得を試行
+        if (!thumbnail) {
+          const mediaContent = (item as any)['media:content'];
+          if (mediaContent && mediaContent.$ && mediaContent.$.url) {
+            thumbnail = mediaContent.$.url;
+          }
+        }
+        
+        // enclosureからの取得を試行
+        if (!thumbnail && (item as any).enclosure && (item as any).enclosure.url) {
+          const enclosureUrl = (item as any).enclosure.url;
+          if (enclosureUrl.match(/\.(jpg|jpeg|png|gif)$/i)) {
+            thumbnail = enclosureUrl;
+          }
+        }
+        
+        // RSSにサムネイルがない場合、簡易取得を試行（最初の2件のみ）
+        if (!thumbnail && feed.items.indexOf(item) < 2) {
           thumbnail = await getSimpleThumbnail(item.link || '');
         }
         
