@@ -25,7 +25,7 @@ NEXT_PUBLIC_SKIP_AUTH=false
 ## Vercel設定手順
 
 1. Vercelダッシュボードにアクセス: https://vercel.com/dashboard
-2. プロジェクト `sil-sil` を選択
+2. プロジェクト `know-news` を選択
 3. Settings > Environment Variables に移動
 4. 上記の環境変数を一つずつ追加
 5. 環境は `Production`, `Preview`, `Development` すべてにチェック
@@ -34,8 +34,8 @@ NEXT_PUBLIC_SKIP_AUTH=false
 ## デプロイ確認方法
 
 環境変数設定後、以下をテスト：
-- https://sil-sil.vercel.app/api/news/list
-- https://sil-sil.vercel.app/api/news/yahoo-detail?url=[Yahoo記事URL]
-- https://sil-sil.vercel.app/api/articles/child/8
+- https://know-news-ebon.vercel.app/api/news/list
+- https://know-news-ebon.vercel.app/api/news/yahoo-detail?url=[Yahoo記事URL]
+- https://know-news-ebon.vercel.app/api/articles/child/8
 
 すべて正常にJSONを返すことを確認してください。

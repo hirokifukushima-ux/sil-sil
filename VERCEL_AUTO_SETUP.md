@@ -3,7 +3,7 @@
 ## 最も簡単な方法: ブラウザ自動設定
 
 ### 手順 1: Vercel設定ページを開く
-1. 以下のリンクをクリック: https://vercel.com/hirokifukushima-ux/sil-sil/settings/environment-variables
+1. 以下のリンクをクリック: https://vercel.com/hiros-projects-98b28a30/know-news/settings/environment-variables
 2. ログインが必要な場合はログインしてください
 
 ### 手順 2: ブラウザコンソールで自動設定
@@ -74,12 +74,12 @@ console.log('⏱ 環境変数設定中... 各項目の「Save」ボタンを手�
 
 ### 手順 4: 新しいデプロイ
 環境変数保存後:
-1. https://vercel.com/hirokifukushima-ux/sil-sil/deployments に移動
+1. https://vercel.com/hiros-projects-98b28a30/know-news/deployments に移動
 2. 「**Redeploy**」ボタンをクリック
 
 ## 🎯 完了確認
 デプロイ完了後（約3分）にテスト:
-- https://sil-sil.vercel.app/api/news/list ✅
-- https://sil-sil.vercel.app/parent/news ✅
+- https://know-news-ebon.vercel.app/api/news/list ✅
+- https://know-news-ebon.vercel.app/parent/news ✅
 
 これで本番環境でニュース選択機能が完全に動作します！

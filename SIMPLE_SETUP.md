@@ -3,7 +3,7 @@
 ## 🎯 必要な作業（5つだけ）
 
 ### 1. Vercel設定ページを開く
-👉 **[ここをクリック](https://vercel.com/hirokifukushima-ux/sil-sil/settings/environment-variables)**
+👉 **[ここをクリック](https://vercel.com/hiros-projects-98b28a30/know-news/settings/environment-variables)**
 
 ### 2. 以下の環境変数を追加（コピー＆ペースト）
 
@@ -33,10 +33,10 @@
 - Environment: **全てチェック**
 
 ### 3. 新しいデプロイ
-👉 **[ここをクリック](https://vercel.com/hirokifukushima-ux/sil-sil/deployments)** → 「**Redeploy**」ボタン
+👉 **[ここをクリック](https://vercel.com/hiros-projects-98b28a30/know-news/deployments)** → 「**Redeploy**」ボタン
 
 ## ✅ 完了確認（約3分後）
-- https://sil-sil.vercel.app/api/news/list
+- https://know-news-ebon.vercel.app/api/news/list
 - 正常にJSONが返れば設定完了！
 
 ---

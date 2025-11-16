@@ -19,7 +19,7 @@ interface StoredArticle {
   archivedAt?: string;
 }
 
-const STORAGE_KEY = 'sil-sil-articles';
+const STORAGE_KEY = 'know-news-articles';
 
 // ブラウザでのみ実行される関数
 function isClient(): boolean {
