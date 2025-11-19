@@ -294,6 +294,20 @@ export class MemoryProvider implements DatabaseProvider {
         expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1年間有効
         createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
         updatedAt: new Date().toISOString()
+      },
+      // MGUMLU78 招待コード（永続化）
+      {
+        id: 'inv-mgumlu78',
+        email: 'user@example.com',
+        inviterType: 'master',
+        inviterId: 'master-1',
+        targetType: 'parent',
+        organizationId: 'org-1',
+        status: 'pending',
+        code: 'MGUMLU78',
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1年間有効
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       }
     ];
 
