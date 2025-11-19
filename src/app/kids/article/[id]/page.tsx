@@ -3,6 +3,30 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
+// カテゴリ表示のヘルパー関数
+function getDisplayCategory(category: string, title?: string): string {
+  if (category === 'converted' && title) {
+    // 既存の "converted" カテゴリの記事は、タイトルからカテゴリを推定
+    const keywords = {
+      'スポーツ': ['野球', 'サッカー', 'テニス', 'ゴルフ', 'バスケ', 'オリンピック', '選手', 'チーム', '試合', '勝利', '敗戦', 'FA', 'WS', 'ワールドシリーズ', 'カブス', 'パドレス', 'ドジャース'],
+      '科学': ['宇宙', '火星', '探査機', 'NASA', '化石', '恐竜', '研究', '発見', '実験', '技術'],
+      '政治': ['政府', '市長', '選挙', '政策', '法案', '国会', '首相', '大統領'],
+      '経済': ['株価', '経済', '企業', '売上', '業績', '投資', '金融', '銀行', 'GDP'],
+      '教育': ['学校', '大学', '高校', '中学', '小学', '教育', '授業', '先生', '教員', 'ストライキ', '日大'],
+      '国際': ['海外', '米国', 'アメリカ', '中国', '韓国', '欧州', 'トロント', 'カナダ', 'ロサンゼルス'],
+      '社会': ['事件', '事故', '裁判', '逮捕', '判決', '警察', '消防']
+    };
+
+    for (const [cat, keywordList] of Object.entries(keywords)) {
+      if (keywordList.some(keyword => title.includes(keyword))) {
+        return cat;
+      }
+    }
+    return 'ニュース';
+  }
+  return category;
+}
+
 interface Article {
   id: number;
   convertedTitle: string;
@@ -53,33 +77,47 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
 
   const fetchArticle = async (id: string) => {
     try {
-      // まずローカルストレージから記事を探す
+      console.log(`🔄 記事ID:${id}の取得を開始`);
+
+      // 認証情報を取得
+      let authHeaders: HeadersInit = {};
       if (typeof window !== 'undefined') {
-        const localArticles = localStorage.getItem('convertedArticles');
-        if (localArticles) {
-          const articles = JSON.parse(localArticles);
-          const foundLocalArticle = articles.find((a: { id: string | number }) => a.id.toString() === id);
-          if (foundLocalArticle) {
-            setArticle({
-              id: foundLocalArticle.id,
-              convertedTitle: foundLocalArticle.convertedTitle,
-              convertedContent: foundLocalArticle.convertedContent,
-              convertedSummary: foundLocalArticle.convertedSummary,
-              category: foundLocalArticle.category,
-              createdAt: foundLocalArticle.createdAt,
-              hasRead: foundLocalArticle.hasRead || false,
-              image: foundLocalArticle.image
-            });
-            console.log(`✅ ローカルストレージから記事ID:${id}を取得`);
-            setLoading(false);
-            return;
-          }
+        const sessionData = localStorage.getItem('authSession');
+        if (sessionData) {
+          authHeaders = {
+            'X-Auth-Session': sessionData
+          };
         }
       }
-      
-      // ローカルストレージになければデータベースAPIから記事を取得
-      // 子どもの年齢を8歳に固定（実際のアプリでは認証から取得）
-      const response = await fetch(`/api/articles/child/8`);
+
+      // 直接記事IDで取得を試みる（専用APIエンドポイント）
+      const directResponse = await fetch(`/api/articles/${id}`, {
+        headers: authHeaders
+      });
+      const directResult = await directResponse.json();
+
+      if (directResult.success && directResult.article) {
+        const foundArticle = directResult.article;
+        const displayCategory = getDisplayCategory(foundArticle.category, foundArticle.convertedTitle);
+        setArticle({
+          id: foundArticle.id,
+          convertedTitle: foundArticle.convertedTitle,
+          convertedContent: foundArticle.convertedContent,
+          convertedSummary: foundArticle.convertedSummary,
+          category: displayCategory,
+          createdAt: foundArticle.createdAt,
+          hasRead: foundArticle.hasRead,
+          image: foundArticle.image
+        });
+        console.log(`✅ 専用APIから記事ID:${id}を取得`);
+        setLoading(false);
+        return;
+      }
+
+      // フォールバック: 子ども向けAPIから記事を取得
+      const response = await fetch(`/api/articles/child/8`, {
+        headers: authHeaders
+      });
       const result = await response.json();
       
       if (result.success) {
@@ -94,12 +132,13 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
           image?: string;
         }) => a.id.toString() === id);
         if (foundArticle) {
+          const displayCategory = getDisplayCategory(foundArticle.category, foundArticle.convertedTitle);
           setArticle({
             id: foundArticle.id,
             convertedTitle: foundArticle.convertedTitle,
             convertedContent: foundArticle.convertedContent,
             convertedSummary: foundArticle.convertedSummary,
-            category: foundArticle.category,
+            category: displayCategory,
             createdAt: foundArticle.createdAt,
             hasRead: foundArticle.hasRead,
             image: foundArticle.image
@@ -334,25 +373,27 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
   };
 
   const getCategoryEmoji = (category: string) => {
-    switch (category) {
-      case 'かがく':
-        return '🔬';
-      case 'スポーツ':
-        return '⚽';
-      default:
-        return '📰';
-    }
+    if (category.includes('かがく') || category.includes('科学')) return '🔬';
+    if (category.includes('スポーツ')) return '⚽';
+    if (category.includes('ぶんか') || category.includes('文化')) return '🎨';
+    if (category.includes('けいざい') || category.includes('経済')) return '💰';
+    if (category.includes('せいじ') || category.includes('政治')) return '🏛️';
+    if (category.includes('しゃかい') || category.includes('社会')) return '🌍';
+    if (category.includes('教育')) return '📚';
+    if (category.includes('国際')) return '🌏';
+    return '📰';
   };
 
   const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'かがく':
-        return 'bg-blue-400';
-      case 'スポーツ':
-        return 'bg-green-400';
-      default:
-        return 'bg-purple-400';
-    }
+    if (category.includes('かがく') || category.includes('科学')) return 'bg-blue-400';
+    if (category.includes('スポーツ')) return 'bg-green-400';
+    if (category.includes('ぶんか') || category.includes('文化')) return 'bg-pink-400';
+    if (category.includes('けいざい') || category.includes('経済')) return 'bg-yellow-400';
+    if (category.includes('せいじ') || category.includes('政治')) return 'bg-red-400';
+    if (category.includes('しゃかい') || category.includes('社会')) return 'bg-teal-400';
+    if (category.includes('教育')) return 'bg-indigo-400';
+    if (category.includes('国際')) return 'bg-cyan-400';
+    return 'bg-purple-400';
   };
 
   if (loading) {

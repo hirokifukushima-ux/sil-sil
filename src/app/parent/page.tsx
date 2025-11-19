@@ -3,7 +3,31 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { clearUserType, requireAuth } from "../../lib/auth";
+import { clearUserType, isParentUser, getAuthSession } from "../../lib/auth";
+
+// カテゴリ表示のヘルパー関数
+function getDisplayCategory(category: string, originalTitle?: string): string {
+  if (category === 'converted' && originalTitle) {
+    // 既存の "converted" カテゴリの記事は、タイトルからカテゴリを推定
+    const keywords = {
+      'スポーツ': ['野球', 'サッカー', 'テニス', 'ゴルフ', 'バスケ', 'オリンピック', '選手', 'チーム', '試合', '勝利', '敗戦', 'FA', 'WS', 'ワールドシリーズ', 'カブス', 'パドレス', 'ドジャース'],
+      '科学': ['宇宙', '火星', '探査機', 'NASA', '化石', '恐竜', '研究', '発見', '実験', '技術'],
+      '政治': ['政府', '市長', '選挙', '政策', '法案', '国会', '首相', '大統領'],
+      '経済': ['株価', '経済', '企業', '売上', '業績', '投資', '金融', '銀行', 'GDP'],
+      '教育': ['学校', '大学', '高校', '中学', '小学', '教育', '授業', '先生', '教員', 'ストライキ', '日大'],
+      '国際': ['海外', '米国', 'アメリカ', '中国', '韓国', '欧州', 'トロント', 'カナダ', 'ロサンゼルス'],
+      '社会': ['事件', '事故', '裁判', '逮捕', '判決', '警察', '消防']
+    };
+
+    for (const [cat, keywordList] of Object.entries(keywords)) {
+      if (keywordList.some(keyword => originalTitle.includes(keyword))) {
+        return cat;
+      }
+    }
+    return 'ニュース';
+  }
+  return category;
+}
 
 export default function ParentDashboard() {
   const router = useRouter();
@@ -24,6 +48,7 @@ export default function ParentDashboard() {
     status: string;
     siteName?: string;
     image?: string;
+    convertedSummary?: string;
   }>>([]);
   const [childQuestions, setChildQuestions] = useState<Array<{
     id: string;
@@ -38,6 +63,14 @@ export default function ParentDashboard() {
   }>>([]);
   const [editingChild, setEditingChild] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  
+  // 統計データ
+  const [stats, setStats] = useState({
+    totalArticles: 0,
+    readArticles: 0,
+    readRate: 0,
+    categoryStats: {} as Record<string, number>
+  });
   
   // アーカイブ関連の状態
   const [currentView, setCurrentView] = useState<'recent' | 'archived'>('recent');
@@ -55,6 +88,7 @@ export default function ParentDashboard() {
     status: string;
     siteName?: string;
     image?: string;
+    convertedSummary?: string;
   }>>([]);
   const [selectedArticles, setSelectedArticles] = useState<number[]>([]);
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -65,6 +99,27 @@ export default function ParentDashboard() {
     { id: '123e4567-e89b-12d3-a456-426614174000', name: '太郎', age: 8, grade: '小2' },
     { id: 'child2', name: '花子', age: 10, grade: '小4' }
   ]);
+
+  // 統計を計算する関数
+  const calculateStats = (articles: typeof recentArticles) => {
+    const totalArticles = articles.length;
+    const readArticles = articles.filter(article => article.hasRead).length;
+    const readRate = totalArticles > 0 ? Math.round((readArticles / totalArticles) * 100) : 0;
+    
+    // カテゴリ別統計
+    const categoryStats: Record<string, number> = {};
+    articles.forEach(article => {
+      const category = getDisplayCategory(article.category, article.originalTitle);
+      categoryStats[category] = (categoryStats[category] || 0) + 1;
+    });
+    
+    setStats({
+      totalArticles,
+      readArticles,
+      readRate,
+      categoryStats
+    });
+  };
 
   // 年齢から学年を自動計算
   const getGradeFromAge = (age: number): string => {
@@ -98,10 +153,13 @@ export default function ParentDashboard() {
 
   // アクセス制御チェック
   useEffect(() => {
-    if (!requireAuth('parent')) {
+    console.log('🔍 親ダッシュボード：認証チェック開始');
+    if (!isParentUser()) {
+      console.log('❌ 親ダッシュボード：認証失敗、ログインページへリダイレクト');
       router.push('/login');
       return;
     }
+    console.log('✅ 親ダッシュボード：認証成功');
     setIsAuthorized(true);
   }, [router]);
 
@@ -113,8 +171,19 @@ export default function ParentDashboard() {
       try {
         console.log('🔄 親ページ：データベースから記事取得を開始...');
         
+        // 認証情報を取得
+        const session = getAuthSession();
+        if (!session) {
+          console.error('認証情報がありません');
+          return;
+        }
+        
         // 子供ページと同じデータベースAPIを使用（データ整合性確保）
-        const response = await fetch('/api/articles/recent');
+        const response = await fetch('/api/articles/recent', {
+          headers: {
+            'X-Auth-Session': JSON.stringify(session),
+          },
+        });
         const result = await response.json();
         
         if (result.success && result.articles.length > 0) {
@@ -124,14 +193,17 @@ export default function ParentDashboard() {
           }) => article.isArchived !== true);
           
           setRecentArticles(activeArticles);
+          calculateStats(activeArticles);
           console.log(`✅ 親ページ：データベースから${activeArticles.length}件の記事を取得完了`);
         } else {
           console.warn('⚠️ データベースから記事を取得できませんでした');
           setRecentArticles([]);
+        calculateStats([]);
         }
       } catch (error) {
         console.error('❌ 親ページ記事取得エラー:', error);
         setRecentArticles([]);
+        calculateStats([]);
       }
     };
 
@@ -237,10 +309,16 @@ export default function ParentDashboard() {
           setNewArticleUrl('');
           
           // 記事リストを更新
-          const recentResponse = await fetch('/api/articles/recent');
+          const session = getAuthSession();
+          const recentResponse = await fetch('/api/articles/recent', {
+            headers: {
+              'X-Auth-Session': JSON.stringify(session),
+            },
+          });
           const recentResult = await recentResponse.json();
           if (recentResult.success) {
             setRecentArticles(recentResult.articles);
+            calculateStats(recentResult.articles);
           }
         } else {
           throw new Error(result.error || 'サーバーエラーが発生しました');
@@ -309,6 +387,7 @@ export default function ParentDashboard() {
         archivedAt?: string;
         status: string;
         siteName?: string;
+        convertedSummary?: string;
       }> = [];
       
       // まずローカルストレージからアーカイブ記事を取得
@@ -412,10 +491,16 @@ export default function ParentDashboard() {
         
         // 記事リストを更新
         if (currentView === 'recent') {
-          const recentResponse = await fetch('/api/articles/recent');
+          const session = getAuthSession();
+          const recentResponse = await fetch('/api/articles/recent', {
+            headers: {
+              'X-Auth-Session': JSON.stringify(session),
+            },
+          });
           const recentResult = await recentResponse.json();
           if (recentResult.success) {
             setRecentArticles(recentResult.articles);
+            calculateStats(recentResult.articles);
           }
         } else {
           await fetchArchivedArticles();
@@ -558,7 +643,7 @@ export default function ParentDashboard() {
               </h2>
               
               {/* 方法選択ボタン */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <Link 
                   href="/parent/news"
                   className="flex items-center p-4 border-2 border-indigo-200 rounded-lg hover:border-indigo-400 transition-colors group"
@@ -585,6 +670,21 @@ export default function ParentDashboard() {
                     </p>
                   </div>
                 </div>
+                
+                <Link 
+                  href="/parent/children"
+                  className="flex items-center p-4 border-2 border-green-200 rounded-lg hover:border-green-400 transition-colors group"
+                >
+                  <div className="text-3xl mr-4">👨‍👩‍👧‍👦</div>
+                  <div>
+                    <h3 className="font-medium text-gray-900 group-hover:text-green-600">
+                      子アカウント管理
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      お子様のアカウントを作成・管理
+                    </p>
+                  </div>
+                </Link>
               </div>
               
               {/* URL入力フォーム */}
@@ -765,9 +865,14 @@ export default function ParentDashboard() {
                         >
                           {article.convertedTitle || article.originalTitle}
                         </h3>
+                        {article.convertedSummary && (
+                          <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+                            📝 {article.convertedSummary}
+                          </p>
+                        )}
                         <div className="flex items-center space-x-4 text-sm text-gray-500">
                           <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                            {article.category}
+                            {getDisplayCategory(article.category, article.originalTitle)}
                           </span>
                           <span>{new Date(article.createdAt).toLocaleDateString('ja-JP')}</span>
                           {currentView === 'archived' && article.archivedAt && (
@@ -939,15 +1044,15 @@ export default function ParentDashboard() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">共有した記事</span>
-                  <span className="text-2xl font-bold text-indigo-600">12</span>
+                  <span className="text-2xl font-bold text-indigo-600">{stats.totalArticles}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">読了記事</span>
-                  <span className="text-2xl font-bold text-green-600">8</span>
+                  <span className="text-2xl font-bold text-green-600">{stats.readArticles}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">読了率</span>
-                  <span className="text-2xl font-bold text-purple-600">67%</span>
+                  <span className="text-2xl font-bold text-purple-600">{stats.readRate}%</span>
                 </div>
               </div>
             </div>
@@ -958,22 +1063,25 @@ export default function ParentDashboard() {
                 カテゴリ別記事数
               </h3>
               <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">科学</span>
-                  <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">5</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">スポーツ</span>
-                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">3</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">テクノロジー</span>
-                  <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-sm">2</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">文化</span>
-                  <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm">2</span>
-                </div>
+                {Object.entries(stats.categoryStats).length > 0 ? (
+                  Object.entries(stats.categoryStats).map(([category, count]) => (
+                    <div key={category} className="flex justify-between items-center">
+                      <span className="text-gray-600">{category}</span>
+                      <span className={`px-2 py-1 rounded text-sm ${
+                        category === '科学' ? 'bg-blue-100 text-blue-800' :
+                        category === 'スポーツ' ? 'bg-green-100 text-green-800' :
+                        category === 'テクノロジー' ? 'bg-purple-100 text-purple-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {count}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-gray-500 py-4">
+                    まだ記事がありません
+                  </div>
+                )}
               </div>
             </div>
 

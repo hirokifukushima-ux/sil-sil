@@ -10,9 +10,38 @@ interface ShareArticleRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    // 認証チェック（親ユーザーのみ）
+    const authHeader = request.headers.get('authorization') || request.headers.get('x-auth-session');
+
+    if (!authHeader) {
+      return NextResponse.json({
+        success: false,
+        error: '認証情報が必要です'
+      }, { status: 401 });
+    }
+
+    let session;
+    try {
+      session = JSON.parse(authHeader);
+    } catch (error) {
+      return NextResponse.json({
+        success: false,
+        error: '認証情報が無効です'
+      }, { status: 401 });
+    }
+
+    if (session.userType !== 'parent') {
+      return NextResponse.json({
+        success: false,
+        error: '親アカウントのみ利用可能です'
+      }, { status: 403 });
+    }
+
+    const parentId = session.userId;
+
     const body: ShareArticleRequest = await request.json();
     const { url, childAge } = body;
-    
+
     // バリデーション
     if (!url) {
       return NextResponse.json(
@@ -20,7 +49,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     if (!childAge || childAge < 6 || childAge > 15) {
       return NextResponse.json(
         { error: '年齢は6歳から15歳の間で入力してください' },
@@ -52,9 +81,9 @@ export async function POST(request: NextRequest) {
         ? `https://${process.env.VERCEL_URL}` 
         : process.env.NEXTAUTH_URL || 'http://localhost:3000';
       
-      console.log(`🔗 内部API呼び出し: ${baseUrl}/api/news/yahoo-detail`);
+      console.log(`🔗 内部API呼び出し: ${baseUrl}/api/news/detail`);
       
-      const yahooResponse = await fetch(`${baseUrl}/api/news/yahoo-detail?url=${encodeURIComponent(url)}`, {
+      const yahooResponse = await fetch(`${baseUrl}/api/news/detail?url=${encodeURIComponent(url)}`, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; InternalAPICall/1.0)',
         }
@@ -93,7 +122,14 @@ export async function POST(request: NextRequest) {
     });
     
     // 2. AIで子供向けに変換
-    console.log('🤖 AI変換を実行中...', { childAge, category: articleContent.category });
+    console.log('🤖 AI変換を実行中...', { 
+      childAge, 
+      category: articleContent.category,
+      environment: process.env.NODE_ENV,
+      hasOpenAiKey: !!process.env.OPENAI_API_KEY,
+      openAiKeyPrefix: process.env.OPENAI_API_KEY?.substring(0, 10)
+    });
+    
     const convertedArticle = await convertArticleForChild(articleContent, childAge);
     
     console.log('✅ AI変換完了:', {
@@ -122,11 +158,12 @@ export async function POST(request: NextRequest) {
         image: rawArticleData.image,
         hasRead: false,
         reactions: [],
-        isArchived: false
+        isArchived: false,
+        parentId: parentId // 親アカウントIDを設定
       };
-      
+
       savedArticle = await db.createArticle(articleData);
-      console.log('✅ データベース保存完了:', savedArticle.id);
+      console.log('✅ データベース保存完了:', savedArticle.id, 'parentId:', parentId);
       
     } catch (dbError) {
       console.warn('⚠️ データベース保存失敗、ローカルストレージのみで対応:', dbError);
