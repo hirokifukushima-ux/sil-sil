@@ -28,12 +28,17 @@ export class SupabaseProvider implements DatabaseProvider {
   // 記事操作
   async getArticles(filters?: {
     userId?: string;
+    parentId?: string;
     category?: string;
     isArchived?: boolean;
     limit?: number;
   }): Promise<Article[]> {
     try {
       let query = this.client.from('articles').select('*');
+
+      if (filters?.parentId) {
+        query = query.eq('parent_id', filters.parentId);
+      }
 
       if (filters?.category && filters.category !== 'all') {
         query = query.eq('category', filters.category);
@@ -421,7 +426,8 @@ export class SupabaseProvider implements DatabaseProvider {
       hasRead: dbArticle.has_read,
       reactions: dbArticle.reactions || [],
       isArchived: dbArticle.is_archived,
-      archivedAt: dbArticle.archived_at
+      archivedAt: dbArticle.archived_at,
+      parentId: dbArticle.parent_id
     };
   }
 
@@ -443,6 +449,7 @@ export class SupabaseProvider implements DatabaseProvider {
     if (article.reactions !== undefined) dbArticle.reactions = article.reactions;
     if (article.isArchived !== undefined) dbArticle.is_archived = article.isArchived;
     if (article.archivedAt !== undefined) dbArticle.archived_at = article.archivedAt;
+    if (article.parentId !== undefined) dbArticle.parent_id = article.parentId;
 
     // 作成時の自動設定
     if (!article.createdAt && !dbArticle.created_at) {
@@ -459,8 +466,13 @@ export class SupabaseProvider implements DatabaseProvider {
       userType: dbUser.user_type,
       displayName: dbUser.display_name,
       childAge: dbUser.child_age,
+      parentId: dbUser.parent_id,
+      masterId: dbUser.master_id,
+      organizationId: dbUser.organization_id,
+      isActive: dbUser.is_active,
       createdAt: dbUser.created_at,
-      lastLoginAt: dbUser.last_login_at
+      lastLoginAt: dbUser.last_login_at,
+      createdBy: dbUser.created_by
     };
   }
 
@@ -472,6 +484,11 @@ export class SupabaseProvider implements DatabaseProvider {
     if (user.userType !== undefined) dbUser.user_type = user.userType;
     if (user.displayName !== undefined) dbUser.display_name = user.displayName;
     if (user.childAge !== undefined) dbUser.child_age = user.childAge;
+    if (user.parentId !== undefined) dbUser.parent_id = user.parentId;
+    if (user.masterId !== undefined) dbUser.master_id = user.masterId;
+    if (user.organizationId !== undefined) dbUser.organization_id = user.organizationId;
+    if (user.isActive !== undefined) dbUser.is_active = user.isActive;
+    if (user.createdBy !== undefined) dbUser.created_by = user.createdBy;
 
     // 作成時の自動設定
     if (!user.createdAt && !dbUser.created_at) {
