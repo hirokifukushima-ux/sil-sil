@@ -364,7 +364,176 @@ src/app/
 
 ---
 
-**最終更新**: 2025-11-23
-**ステータス**: 3層管理システム実装完了、基本機能は本番デプロイ可能
-**未解決の問題**: パフォーマンス最適化（Critical）、セキュリティテスト完了（Medium）
-**次回作業**: パフォーマンス問題の修正（インデックス追加、クエリ最適化）
+## 最新の状況 (2025-11-29)
+
+### 🎉 完了した主要機能（子アカウント管理機能強化 & プロダクションデプロイ）
+
+#### 1. 子アカウント名表示機能
+- **新規API**: `/api/child/profile` - 子アカウント情報取得
+- **実装内容**:
+  - 子画面のヘッダーに子アカウント名を表示
+  - URLパラメータ `childId` から子アカウントを識別
+  - 対象ページ：
+    - `/kids/page.tsx` - 記事一覧ヘッダー
+    - `/kids/article/[id]/page.tsx` - 記事詳細ヘッダー
+    - `/kids/questions/page.tsx` - 質問一覧ヘッダー
+- **UX改善**: どの子アカウントでログインしているかが一目で分かる
+
+#### 2. 子アカウント編集機能
+- **実装場所**: `/parent/children/page.tsx`
+- **機能**:
+  - 既存の子アカウント一覧に「編集」ボタン追加
+  - モーダルダイアログで名前と年齢を編集可能
+  - API: `PATCH /api/parent/children/{childId}` を使用
+  - リアルタイムで一覧が更新される
+- **UI/UX**:
+  - 編集モーダルのデザイン実装
+  - バリデーション（空欄チェック、年齢範囲）
+  - エラーハンドリング
+
+#### 3. プロダクション環境へのデプロイ
+- **課題解決プロセス**:
+  1. **SSH認証問題**:
+     - HTTPSからSSHリモートURLへ変更
+     - SSH鍵をssh-agentに追加
+     - GitHubへのpushに成功
+
+  2. **Vercel Authentication問題**:
+     - プロダクション環境で「Authentication Required」エラー
+     - Deployment Protection（Vercel Authentication）を無効化
+     - APIアクセスが可能に
+
+  3. **環境変数の改行問題**:
+     - Vercelの環境変数に改行文字 `\n` が混入
+     - ユーザーがVercelダッシュボードで削除
+     - 再デプロイで正常化
+
+  4. **招待コード問題**:
+     - `W6V1SHEE` が古いデプロイメントでは見つからない問題
+     - 原因：古いデプロイメントURL（51分前）をテストしていた
+     - 最新デプロイメント（9分前）では正常に動作確認
+
+  5. **プロダクションドメイン設定**:
+     - 固定のプロダクションドメイン未設定を発見
+     - ユーザーがVercelダッシュボードで設定
+     - **プロダクションURL**: `https://silsil.vercel.app/` ✅
+
+#### 4. Git履歴
+- **コミット**: "Add child account name display and editing features"
+- **内容**:
+  - 子アカウントプロフィール取得API
+  - 子画面ヘッダーへの名前表示
+  - 親画面での子アカウント編集機能
+- **ブランチ**: main
+- **リモート**: GitHub（SSH）
+
+### 📁 主要な変更ファイル
+
+```
+src/app/api/
+└── child/
+    └── profile/route.ts           # 子アカウント情報取得API（NEW）
+
+src/app/kids/
+├── page.tsx                       # 子アカウント名表示追加
+├── article/[id]/page.tsx          # 子アカウント名表示追加
+└── questions/page.tsx             # 子アカウント名表示追加
+
+src/app/parent/
+└── children/page.tsx              # 子アカウント編集機能追加（大幅更新）
+```
+
+### 🚀 デプロイメント情報
+
+- **プロダクションURL**: https://silsil.vercel.app/
+- **デプロイメント方式**: GitHub連携（main ブランチへのpushで自動デプロイ）
+- **環境変数**:
+  - `NEXT_PUBLIC_USE_DATABASE=true` ✅
+  - `NEXT_PUBLIC_SKIP_AUTH=false` ✅
+  - `NEXT_PUBLIC_SUPABASE_URL` ✅
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY` ✅
+  - `OPENAI_API_KEY` ✅（設定確認済み）
+- **データベース**: Supabase（vlytixemvzmtoabvtnod）
+- **認証**: Deployment Protection無効化（一般アクセス可能）
+
+### 🧪 検証済み機能
+
+- ✅ 招待コード `W6V1SHEE` でログイン可能
+- ✅ 子アカウント名が各画面ヘッダーに表示
+- ✅ 親画面で子アカウントの編集が可能
+- ✅ 環境変数が正しく設定されている
+- ✅ プロダクション環境でSupabaseデータベースに接続
+- ✅ ローカルとプロダクションで同じデータベースを共有
+
+### 🔧 トラブルシューティング履歴
+
+#### Issue 1: SSH Authentication Failed
+- **エラー**: `fatal: could not read Password for 'https://github_pat_...'`
+- **原因**: HTTPSリモートURLでの認証失敗
+- **解決**: SSH URLに変更 + SSH鍵をssh-agentに追加
+
+#### Issue 2: Vercel Authentication Blocking
+- **エラー**: Production APIが「Authentication Required」HTMLを返す
+- **原因**: Deployment Protectionが有効
+- **解決**: Vercel Authentication トグルを無効化
+
+#### Issue 3: Environment Variables with Newlines
+- **エラー**: 環境変数に `"true\n"` などの改行文字が混入
+- **原因**: Vercel設定時の入力ミス
+- **解決**: Vercelダッシュボードで改行を削除 + 再デプロイ
+
+#### Issue 4: Invitation Code Not Found
+- **エラー**: `W6V1SHEE` が「招待コードが見つかりません」
+- **原因**: 古いデプロイメントURL（51分前）をテストしていた
+- **解決**: 最新デプロイメントURL（9分前）で確認
+
+#### Issue 5: No Production Domain
+- **問題**: デプロイメント毎に異なるURLになる
+- **原因**: プロダクションドメインが未設定
+- **解決**: `silsil.vercel.app` を設定
+
+### 🎯 解決済みの問題
+
+**ユーザー体験の向上**:
+- ✅ 子アカウントでログインしている際、誰のアカウントか分かるようになった
+- ✅ 親が子アカウントの情報（名前・年齢）を後から編集できるようになった
+- ✅ プロダクション環境で安定してアクセス可能になった
+- ✅ 固定URLでアプリにアクセス可能になった
+
+**技術的な改善**:
+- ✅ Git/GitHub/Vercelのデプロイメントフロー確立
+- ✅ 環境変数の適切な設定
+- ✅ SSH認証によるセキュアなGitHub連携
+- ✅ Vercelの自動デプロイメント設定
+
+### 💡 今後の改善案
+
+#### 優先度: High
+1. **パフォーマンス最適化** - インデックス追加、クエリ最適化、キャッシング（前回から継続）
+2. **セキュリティテスト完了** - OWASP Top 10の全項目チェック（前回から継続）
+
+#### 優先度: Medium
+3. **環境分離** - 開発環境用の別Supabaseプロジェクト作成
+4. **子アカウント削除機能** - 現在は作成・編集のみで削除機能なし
+5. **子アカウントアイコン設定** - プロフィール画像やアバター選択機能
+
+#### 優先度: Low
+6. **UI/UX改善** - レスポンシブデザインの最適化
+7. **リアルタイム更新** - WebSocketまたはSupabase Realtime使用
+8. **プッシュ通知** - 親から回答があった時の通知機能
+
+### 🚀 次回開発時の注意点
+
+1. **プロダクションURL**: https://silsil.vercel.app/
+2. **デプロイ方法**: `git push origin main` で自動デプロイ
+3. **環境変数**: Vercel設定で改行が入らないよう注意
+4. **データベース**: ローカルとプロダクションで同じSupabaseを使用（将来的には分離推奨）
+5. **テスト**: デプロイ後は最新デプロイメントURLで動作確認
+
+---
+
+**最終更新**: 2025-11-29
+**ステータス**: プロダクション環境デプロイ完了、子アカウント管理機能強化完了
+**プロダクションURL**: https://silsil.vercel.app/
+**未解決の問題**: パフォーマンス最適化（Critical）、セキュリティテスト完了（Medium）、環境分離（Medium）
+**次回作業**: パフォーマンス問題の修正（インデックス追加、クエリ最適化）または環境分離
