@@ -1,24 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase, DatabaseError } from '@/lib/database';
+import { getAuthSession } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
+    // 認証チェック - ヘッダーからセッション情報を取得
+    const authHeader = request.headers.get('authorization') || request.headers.get('x-auth-session');
+    
+    if (!authHeader) {
+      return NextResponse.json({
+        success: false,
+        error: '認証情報が必要です'
+      }, { status: 401 });
+    }
+    
+    let session;
+    try {
+      session = JSON.parse(authHeader);
+    } catch (error) {
+      return NextResponse.json({
+        success: false,
+        error: '認証情報が無効です'
+      }, { status: 401 });
+    }
+    
+    if (!session || (session.userType !== 'parent' && session.userType !== 'child')) {
+      return NextResponse.json({
+        success: false,
+        error: '記事閲覧は親アカウントまたは子アカウントでのみ利用できます'
+      }, { status: 403 });
+    }
+    
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
-    const limit = limitParam ? parseInt(limitParam) : 1000; // limitが指定されていない場合は大きな値（実質制限なし）
+    const limit = limitParam ? parseInt(limitParam) : 1000;
     const includeArchived = searchParams.get('includeArchived') === 'true';
     
-    console.log(`📊 最近の記事を取得中... (limit: ${limit}, includeArchived: ${includeArchived})`);
+    // 親アカウントIDを決定（子の場合は親のIDを使用）
+    const parentId = session.userType === 'parent' ? session.userId : session.parentId;
     
-    // 新しいデータベース抽象化層から記事を取得
+    console.log(`📊 最近の記事を取得中... (親: ${parentId}, limit: ${limit}, includeArchived: ${includeArchived})`);
+    
+    // 親アカウント毎にフィルタリングして記事を取得
     const db = getDatabase();
     const articles = await db.getArticles({
-      isArchived: includeArchived ? undefined : false, // includeArchived=falseの場合のみアーカイブされていない記事を取得
+      parentId: parentId, // 親アカウントでフィルタリング
+      isArchived: includeArchived ? undefined : false,
       limit
     });
     
-    // 統計情報も取得
-    const stats = await db.getStats('child1'); // 現在は固定、実際は動的に取得
+    // 統計情報も親アカウント毎に取得
+    const stats = await db.getStats({ 
+      parentId: parentId 
+    });
     
     console.log(`✅ 取得完了: ${articles.length}件の記事`);
     

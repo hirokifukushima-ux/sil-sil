@@ -141,13 +141,12 @@ export async function POST(request: NextRequest) {
     } else {
       // 直接子アカウントを作成（即座にアクティブ化）
       const childUser = await db.createUser({
-        id: `child-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         userType: 'child',
         displayName: displayName,
         childAge: childAge,
         parentId: parentId,
-        masterId: session.masterId || 'master-1',
-        organizationId: session.organizationId || 'org-1',
+        masterId: session.masterId,
+        organizationId: session.organizationId,
         isActive: true, // 作成と同時にアクティブ化（親がすぐに一覧で確認できるように）
         createdBy: parentId
       });

@@ -36,38 +36,78 @@ export default function LoginPage() {
     setIsLoading(true);
     setError('');
 
-    // パスワード確認
-    if (password !== PASSWORDS[selectedUserType]) {
-      setError('パスワードが間違っています');
-      setIsLoading(false);
-      return;
-    }
+    try {
+      // マスターユーザーの場合はAPI経由でログイン
+      if (selectedUserType === 'master') {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'master@know-news.com',
+            password: password,
+            userType: 'master'
+          }),
+        });
 
-    // 認証成功 - 新しいセッション管理を使用
-    console.log(`🔑 ログイン成功: ${selectedUserType}`);
-    
-    setAuthSession({
-      userId: `${selectedUserType}-${Date.now()}`,
-      userType: selectedUserType,
-      email: selectedUserType === 'master' ? 'master@know-news.com' : undefined,
-      displayName: selectedUserType === 'master' ? 'マスター管理者' : undefined,
-    });
-    
-    console.log('📱 セッション設定完了');
-    
-    // 対応するページにリダイレクト
-    if (selectedUserType === 'child') {
-      console.log('🚀 子ページへリダイレクト');
-      router.push('/kids');
-    } else if (selectedUserType === 'parent') {
-      console.log('🚀 親ページへリダイレクト');
-      router.push('/parent');
-    } else if (selectedUserType === 'master') {
-      console.log('🚀 マスター管理画面へリダイレクト');
-      router.push('/master');
+        const result = await response.json();
+
+        if (!response.ok) {
+          setError(result.error || 'ログインに失敗しました');
+          setIsLoading(false);
+          return;
+        }
+
+        // 認証成功 - データベースから取得したユーザー情報を使用
+        console.log(`🔑 ログイン成功: ${selectedUserType}`, result.user);
+
+        setAuthSession({
+          userId: result.user.id,
+          userType: result.user.userType,
+          email: result.user.email,
+          displayName: result.user.displayName,
+          masterId: result.user.masterId,
+          parentId: result.user.parentId,
+          organizationId: result.user.organizationId,
+        });
+
+        console.log('📱 セッション設定完了');
+        console.log('🚀 マスター管理画面へリダイレクト');
+        router.push('/master');
+      } else {
+        // 親・子ユーザーの場合は既存のロジック（パスワード確認のみ）
+        if (password !== PASSWORDS[selectedUserType]) {
+          setError('パスワードが間違っています');
+          setIsLoading(false);
+          return;
+        }
+
+        // 認証成功 - 一時的なIDを使用
+        console.log(`🔑 ログイン成功: ${selectedUserType}`);
+
+        setAuthSession({
+          userId: `${selectedUserType}-${Date.now()}`,
+          userType: selectedUserType,
+        });
+
+        console.log('📱 セッション設定完了');
+
+        // 対応するページにリダイレクト
+        if (selectedUserType === 'child') {
+          console.log('🚀 子ページへリダイレクト');
+          router.push('/kids');
+        } else if (selectedUserType === 'parent') {
+          console.log('🚀 親ページへリダイレクト');
+          router.push('/parent');
+        }
+      }
+    } catch (error) {
+      console.error('ログインエラー:', error);
+      setError('ログイン処理中にエラーが発生しました');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handleInvitationCode = async () => {
@@ -80,16 +120,16 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // 招待コードで親アカウントを作成
-      const response = await fetch('/api/invitations/accept', {
+      // 招待コードでログイン（新規作成または再ログイン）
+      const response = await fetch('/api/auth/invitation-login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           code: invitationCode.trim(),
-          email: 'user@example.com', // TODO: ユーザーにメールアドレス入力を求める
-          displayName: 'New Parent' // TODO: ユーザーに表示名入力を求める
+          email: 'user@example.com',
+          displayName: 'New Parent'
         }),
       });
 
@@ -107,7 +147,11 @@ export default function LoginPage() {
           organizationId: result.user.organizationId
         });
 
-        alert('アカウントが正常に作成されました！');
+        if (result.isNewUser) {
+          alert('アカウントが正常に作成されました！');
+        } else {
+          alert('再ログインしました！');
+        }
         router.push('/parent');
       } else {
         setError(result.error || '招待コードが無効です');
@@ -130,28 +174,35 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // アクティベーションコードを使用して子アカウントにログイン
-      // ここでは仮で、アクティベーションコードが正しければ
-      // 対応する子アカウントIDを見つけて子ページにリダイレクト
-      
-      // 8文字のアクティベーションコードの場合
-      if (activationCode.trim().length === 8) {
-        // 仮の子ユーザーIDを生成（実際の実装では親のデータベースから取得）
-        const childId = `child-${activationCode.toLowerCase()}`;
-        
+      // アクティベーションコードでログイン
+      const response = await fetch('/api/auth/activation-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: activationCode.trim()
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        // 成功 - 子アカウントとしてログイン
         setAuthSession({
-          userId: childId,
+          userId: result.user.id,
           userType: 'child',
-          displayName: 'Child User',
-          activationCode: activationCode.trim()
+          displayName: result.user.displayName,
+          childAge: result.user.childAge,
+          parentId: result.user.parentId,
+          masterId: result.user.masterId,
+          organizationId: result.user.organizationId
         });
 
-        alert(`ようこそ！アクティベーションが完了しました。`);
-        
-        // 子ページにリダイレクト
-        router.push(`/kids?childId=${childId}&activated=true`);
+        alert(`ようこそ、${result.user.displayName}さん！`);
+        router.push('/kids');
       } else {
-        setError('アクティベーションコードは8文字である必要があります');
+        setError(result.error || 'アクティベーションコードが無効です');
       }
     } catch (error) {
       console.error('アクティベーションコード処理エラー:', error);

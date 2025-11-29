@@ -95,10 +95,12 @@ export default function ParentDashboard() {
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);
 
   // 子どものデータ
-  const [children, setChildren] = useState([
-    { id: '123e4567-e89b-12d3-a456-426614174000', name: '太郎', age: 8, grade: '小2' },
-    { id: 'child2', name: '花子', age: 10, grade: '小4' }
-  ]);
+  const [children, setChildren] = useState<Array<{
+    id: string;
+    name: string;
+    age: number;
+    grade: string;
+  }>>([]);
 
   // 統計を計算する関数
   const calculateStats = (articles: typeof recentArticles) => {
@@ -170,18 +172,30 @@ export default function ParentDashboard() {
     const fetchRecentArticles = async () => {
       try {
         console.log('🔄 親ページ：データベースから記事取得を開始...');
-        
+
         // 認証情報を取得
         const session = getAuthSession();
+        console.log('📋 セッション情報:', session);
         if (!session) {
-          console.error('認証情報がありません');
+          console.error('❌ 認証情報がありません');
           return;
         }
-        
+        if (!session.userId) {
+          console.error('❌ ユーザーIDがありません。セッション:', session);
+          return;
+        }
+        console.log('✅ 認証OK - ユーザーID:', session.userId);
+        console.log('🔍 フェッチURL:', `/api/articles/recent?parentId=${session.userId}&limit=1000&includeArchived=false`);
+
         // 子供ページと同じデータベースAPIを使用（データ整合性確保）
-        const response = await fetch('/api/articles/recent', {
+        // HTTPヘッダーには日本語を含めないため、userIdとuserTypeのみ送信
+        // 修正: parentIdパラメータを追加し、HTTP header エラーを修正
+        const response = await fetch(`/api/articles/recent?parentId=${session.userId}&limit=1000&includeArchived=false`, {
           headers: {
-            'X-Auth-Session': JSON.stringify(session),
+            'X-Auth-Session': JSON.stringify({
+              userId: session.userId,
+              userType: session.userType
+            }),
           },
         });
         const result = await response.json();
@@ -208,6 +222,50 @@ export default function ParentDashboard() {
     };
 
     fetchRecentArticles();
+  }, [isAuthorized]);
+
+  // 子供一覧を取得
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    const fetchChildren = async () => {
+      try {
+        const session = getAuthSession();
+        if (!session) return;
+
+        const response = await fetch('/api/parent/children', {
+          headers: {
+            'X-Auth-Session': JSON.stringify({
+              userId: session.userId,
+              userType: session.userType
+            }),
+          },
+        });
+        const result = await response.json();
+
+        if (result.success && result.children.length > 0) {
+          const formattedChildren = result.children.map((child: {
+            id: string;
+            displayName: string;
+            childAge: number;
+          }) => ({
+            id: child.id,
+            name: child.displayName,
+            age: child.childAge,
+            grade: getGradeFromAge(child.childAge)
+          }));
+          setChildren(formattedChildren);
+          // デフォルトで最初の子供を選択
+          if (formattedChildren.length > 0) {
+            setSelectedChild(formattedChildren[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('子供一覧取得エラー:', error);
+      }
+    };
+
+    fetchChildren();
   }, [isAuthorized]);
 
   // 子供の質問を取得

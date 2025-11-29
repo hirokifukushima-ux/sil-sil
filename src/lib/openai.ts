@@ -160,6 +160,14 @@ export async function convertArticleForChild(
   try {
     // APIキーが設定されていない場合はデモモードで動作
     const apiKey = process.env.OPENAI_API_KEY;
+    
+    console.log('🔍 OpenAI API設定チェック:', {
+      hasApiKey: !!apiKey,
+      keyPrefix: apiKey?.substring(0, 10),
+      keyLength: apiKey?.length,
+      environment: process.env.NODE_ENV
+    });
+    
     if (!apiKey || apiKey === 'sk-test-key-placeholder' || apiKey.trim() === '' || !apiKey.startsWith('sk-')) {
       console.log('⚠️ OpenAI APIキーが正しく設定されていません。デモモードで動作します。');
       console.log(`現在のAPIキー: ${apiKey ? apiKey.substring(0, 10) + '...' : 'undefined'}`);

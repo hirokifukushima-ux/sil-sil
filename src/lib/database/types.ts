@@ -18,16 +18,47 @@ export interface Article {
   reactions: string[];
   isArchived: boolean;
   archivedAt?: string;
+  parentId?: string; // どの親アカウントで作成されたか
+  organizationId?: string; // 組織ID
 }
 
 export interface User {
   id: string;
   email?: string;
-  userType: 'child' | 'parent';
+  userType: 'master' | 'parent' | 'child';
   displayName?: string;
   childAge?: number;
+  parentId?: string; // 子アカウントの場合、所属する親のID
+  masterId?: string; // 親アカウントの場合、所属するマスターのID
+  organizationId?: string; // 組織ID（オプション）
+  isActive: boolean;
   createdAt: string;
   lastLoginAt: string;
+  createdBy?: string; // 作成者のユーザーID
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  masterId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  inviterType: 'master' | 'parent';
+  inviterId: string;
+  targetType: 'parent' | 'child';
+  organizationId?: string;
+  parentId?: string;
+  status: 'pending' | 'accepted' | 'expired';
+  code: string; // 招待コード
+  expiresAt: string;
+  createdAt: string;
+  acceptedUserId?: string; // この招待を受け入れたユーザーのID
 }
 
 export interface ArticleReaction {
@@ -57,6 +88,8 @@ export interface DatabaseProvider {
     category?: string;
     isArchived?: boolean;
     limit?: number;
+    parentId?: string;
+    organizationId?: string;
   }): Promise<Article[]>;
   
   getArticleById(id: number): Promise<Article | null>;
@@ -70,9 +103,45 @@ export interface DatabaseProvider {
   // ユーザー操作
   getUser(id: string): Promise<User | null>;
   
+  getUsers(filters?: {
+    userType?: 'master' | 'parent' | 'child';
+    parentId?: string;
+    masterId?: string;
+    organizationId?: string;
+    isActive?: boolean;
+  }): Promise<User[]>;
+  
   createUser(user: Omit<User, 'createdAt' | 'lastLoginAt'>): Promise<User>;
   
   updateUser(id: string, updates: Partial<User>): Promise<User | null>;
+  
+  deactivateUser(id: string): Promise<boolean>;
+  
+  // 組織操作
+  getOrganization(id: string): Promise<Organization | null>;
+  
+  getOrganizations(filters?: {
+    masterId?: string;
+    isActive?: boolean;
+  }): Promise<Organization[]>;
+  
+  createOrganization(org: Omit<Organization, 'id' | 'createdAt' | 'updatedAt'>): Promise<Organization>;
+  
+  updateOrganization(id: string, updates: Partial<Organization>): Promise<Organization | null>;
+  
+  // 招待機能
+  createInvitation(invitation: Omit<Invitation, 'id' | 'createdAt' | 'code'>): Promise<Invitation>;
+  
+  getInvitation(code: string): Promise<Invitation | null>;
+  
+  getInvitations(filters?: {
+    inviterId?: string;
+    status?: 'pending' | 'accepted' | 'expired';
+  }): Promise<Invitation[]>;
+  
+  acceptInvitation(code: string, userId: string): Promise<boolean>;
+  
+  expireInvitation(code: string): Promise<boolean>;
   
   // リアクション操作
   addReaction(articleId: number, userId: string, reaction: string): Promise<boolean>;
@@ -89,11 +158,21 @@ export interface DatabaseProvider {
   answerQuestion(id: string, answer: string): Promise<Question | null>;
   
   // 統計・管理
-  getStats(userId?: string): Promise<{
+  getStats(filters?: {
+    userId?: string;
+    parentId?: string;
+    organizationId?: string;
+  }): Promise<{
     totalArticles: number;
     readArticles: number;
     readingRate: number;
     categoryCounts: { [key: string]: number };
+    userCounts?: {
+      totalUsers: number;
+      activeUsers: number;
+      parents: number;
+      children: number;
+    };
   }>;
   
   // 接続テスト

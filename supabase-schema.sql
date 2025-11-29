@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS articles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Reactions テーブル（記事へのリアクション）
-CREATE TABLE IF NOT EXISTS reactions (
+-- 5. Article_Reactions テーブル（記事へのリアクション）
+CREATE TABLE IF NOT EXISTS article_reactions (
   id TEXT PRIMARY KEY,
   article_id BIGINT REFERENCES articles(id) ON DELETE CASCADE,
   user_id TEXT REFERENCES users(id),
@@ -95,7 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_invitations_status ON invitations(status);
 CREATE INDEX IF NOT EXISTS idx_articles_parent_id ON articles(parent_id);
 CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
 CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_reactions_article_id ON reactions(article_id);
+CREATE INDEX IF NOT EXISTS idx_reactions_article_id ON article_reactions(article_id);
 CREATE INDEX IF NOT EXISTS idx_questions_article_id ON questions(article_id);
 CREATE INDEX IF NOT EXISTS idx_questions_user_id ON questions(user_id);
 
@@ -104,7 +104,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_reactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE questions ENABLE ROW LEVEL SECURITY;
 
 -- RLSポリシー（全てのユーザーが読み書きできるように設定 - 認証はアプリケーション層で実施）
@@ -114,5 +114,5 @@ CREATE POLICY "Enable all for anon users" ON users FOR ALL USING (true);
 CREATE POLICY "Enable all for anon users" ON organizations FOR ALL USING (true);
 CREATE POLICY "Enable all for anon users" ON invitations FOR ALL USING (true);
 CREATE POLICY "Enable all for anon users" ON articles FOR ALL USING (true);
-CREATE POLICY "Enable all for anon users" ON reactions FOR ALL USING (true);
+CREATE POLICY "Enable all for anon users" ON article_reactions FOR ALL USING (true);
 CREATE POLICY "Enable all for anon users" ON questions FOR ALL USING (true);

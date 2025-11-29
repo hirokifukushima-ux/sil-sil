@@ -22,6 +22,8 @@ export default function QuestionsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'answered'>('all');
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [childId, setChildId] = useState<string | null>(null);
+  const [childName, setChildName] = useState<string>('お子さま');
 
   // アクセス制御チェック
   useEffect(() => {
@@ -32,46 +34,94 @@ export default function QuestionsPage() {
     setIsAuthorized(true);
   }, [router]);
 
+  // URLパラメータからchildIdを取得
   useEffect(() => {
-    if (!isAuthorized) return;
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlChildId = urlParams.get('childId');
+      setChildId(urlChildId);
+    }
+  }, []);
+
+  // 子アカウント名を取得
+  useEffect(() => {
+    if (!childId) return;
+    const fetchChildProfile = async () => {
+      try {
+        const response = await fetch(`/api/child/profile?childId=${childId}`);
+        const result = await response.json();
+
+        if (result.success && result.profile) {
+          setChildName(result.profile.displayName || 'お子さま');
+        }
+      } catch (error) {
+        console.error('子アカウント情報取得エラー:', error);
+      }
+    };
+
+    fetchChildProfile();
+  }, [childId]);
+
+  useEffect(() => {
+    if (!isAuthorized || !childId) return;
     fetchAllQuestions();
-  }, [isAuthorized]);
+  }, [isAuthorized, childId]);
 
   const fetchAllQuestions = async () => {
     try {
-      // まず最近の記事を取得
-      const articlesResponse = await fetch('/api/articles/recent');
+      if (!childId) {
+        console.log('childIdがありません');
+        return;
+      }
+
+      // 子アカウントのセッション情報を取得
+      const parentSession = JSON.parse(localStorage.getItem('authSession') || '{}');
+      const childSession = {
+        userId: childId,
+        userType: 'child',
+        parentId: parentSession.userId,
+        masterId: parentSession.masterId || 'master-1',
+        organizationId: parentSession.organizationId || 'org-1'
+      };
+
+      // 子アカウント用APIで記事を取得
+      const articlesResponse = await fetch(`/api/articles/child/${childId}`, {
+        headers: {
+          'X-Auth-Session': JSON.stringify(childSession)
+        }
+      });
       const articlesResult = await articlesResponse.json();
-      
-      if (articlesResult.success) {
+
+      if (articlesResult.success && articlesResult.articles) {
         const allQuestions: Question[] = [];
-        
+
         // 各記事の質問を取得
         for (const article of articlesResult.articles) {
           const response = await fetch(`/api/articles/${article.id}/question`);
           const result = await response.json();
-          
+
           if (result.success && result.questions.length > 0) {
             const childQuestions = result.questions
-              .filter((q: { childId: string }) => q.childId === 'child1')
+              .filter((q: { userId: string }) => q.userId === childId)
               .map((q: {
                 id: string;
                 articleId: string;
                 question: string;
-                childId: string;
+                userId: string;
                 createdAt: string;
                 status: string;
                 parentAnswer?: string;
                 articleTitle?: string;
               }) => ({
                 ...q,
+                childId: q.userId,
                 articleTitle: q.articleTitle || article.convertedTitle || article.originalTitle
               }));
-            
+
             allQuestions.push(...childQuestions);
           }
         }
-        
+
         // 作成日時順でソート（新しい順）
         allQuestions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setQuestions(allQuestions);
@@ -128,11 +178,16 @@ export default function QuestionsPage() {
       <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Link href="/kids" className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors">
+            <Link
+              href={childId ? `/kids?childId=${childId}` : '/kids'}
+              className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors"
+            >
               <span className="text-2xl">←</span>
               <span className="font-bold">もどる</span>
             </Link>
             <div className="flex items-center space-x-2">
+              <span className="text-lg">🧒</span>
+              <span className="text-sm font-medium text-gray-600">{childName} さん</span>
               <span className="text-2xl">❓</span>
               <h1 className="text-xl font-bold text-gray-800">わたしの しつもん</h1>
             </div>
@@ -213,8 +268,8 @@ export default function QuestionsPage() {
             <p className="text-gray-600 mb-6">
               ニュースを よんで、しつもんしてみよう！
             </p>
-            <Link 
-              href="/kids"
+            <Link
+              href={childId ? `/kids?childId=${childId}` : '/kids'}
               className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-full font-bold transition-colors"
             >
               ニュースを みる
@@ -225,8 +280,8 @@ export default function QuestionsPage() {
             {getFilteredQuestions().map((question) => (
               <div key={question.id} className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
                 {/* 記事タイトル */}
-                <Link 
-                  href={`/kids/article/${question.articleId}`}
+                <Link
+                  href={childId ? `/kids/article/${question.articleId}?childId=${childId}` : `/kids/article/${question.articleId}`}
                   className="block mb-4 p-3 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"
                 >
                   <div className="text-sm text-blue-600 font-medium mb-1">きじ:</div>
@@ -285,8 +340,8 @@ export default function QuestionsPage() {
 
         {/* ボトムナビゲーション */}
         <div className="mt-8 text-center">
-          <Link 
-            href="/kids"
+          <Link
+            href={childId ? `/kids?childId=${childId}` : '/kids'}
             className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-full font-bold text-lg transition-all duration-300 shadow-lg transform hover:scale-105"
           >
             ニュース いちらんに もどる

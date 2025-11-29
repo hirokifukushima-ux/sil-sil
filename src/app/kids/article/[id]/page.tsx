@@ -57,15 +57,38 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
     parentAnswer?: string;
   }>>([]);
   const [fromParent, setFromParent] = useState(false);
-  
+  const [childId, setChildId] = useState<string | null>(null);
+  const [childName, setChildName] = useState<string>('お子さま');
+
   // URLパラメータを取得
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const isFromParent = urlParams.get('from') === 'parent';
+      const urlChildId = urlParams.get('childId');
       setFromParent(isFromParent);
+      setChildId(urlChildId);
     }
   }, []);
+
+  // 子アカウント名を取得
+  useEffect(() => {
+    if (!childId) return;
+    const fetchChildProfile = async () => {
+      try {
+        const response = await fetch(`/api/child/profile?childId=${childId}`);
+        const result = await response.json();
+
+        if (result.success && result.profile) {
+          setChildName(result.profile.displayName || 'お子さま');
+        }
+      } catch (error) {
+        console.error('子アカウント情報取得エラー:', error);
+      }
+    };
+
+    fetchChildProfile();
+  }, [childId]);
 
   useEffect(() => {
     params.then(({ id }) => {
@@ -220,17 +243,19 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
     try {
       const response = await fetch(`/api/articles/${id}/question`);
       const result = await response.json();
-      
+
       if (result.success) {
-        // 子供自身の質問のみを表示
-        const childQuestions = result.questions.filter((q: {
-          id: string;
-          userId: string;
-          status: string;
-          createdAt: string;
-          parentAnswer?: string;
-        }) => q.userId === '123e4567-e89b-12d3-a456-426614174000');
-        
+        // 子供自身の質問のみを表示（childIdがある場合のみフィルタリング）
+        const childQuestions = childId
+          ? result.questions.filter((q: {
+              id: string;
+              userId: string;
+              status: string;
+              createdAt: string;
+              parentAnswer?: string;
+            }) => q.userId === childId)
+          : result.questions;
+
         setQuestions(childQuestions);
       }
     } catch (error) {
@@ -326,6 +351,11 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
       return;
     }
 
+    if (!childId) {
+      alert('子アカウント情報が見つかりません');
+      return;
+    }
+
     try {
       // 質問をAPIに送信（記事情報と一緒に）
       const response = await fetch(`/api/articles/${articleId}/question`, {
@@ -335,7 +365,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         },
         body: JSON.stringify({
           question: questionText,
-          childId: '123e4567-e89b-12d3-a456-426614174000',
+          childId: childId,
           articleTitle: article?.convertedTitle,
           articleSummary: article?.convertedSummary
         }),
@@ -396,6 +426,13 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
     return 'bg-purple-400';
   };
 
+  // 戻るURLを生成（childIdを保持）
+  const getBackUrl = () => {
+    if (fromParent) return '/parent';
+    if (childId) return `/kids?childId=${childId}`;
+    return '/kids';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-200 flex items-center justify-center">
@@ -417,7 +454,7 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
           <h2 className="text-2xl font-bold text-gray-800 mb-4">
             きじが みつからないよ
           </h2>
-          <Link href={fromParent ? "/parent" : "/kids"} className="bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600 transition-colors">
+          <Link href={getBackUrl()} className="bg-blue-500 text-white px-6 py-3 rounded-full font-bold hover:bg-blue-600 transition-colors">
             ニュースいちらんに もどる
           </Link>
         </div>
@@ -432,16 +469,20 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link href={fromParent ? "/parent" : "/kids"} className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors">
+              <Link href={getBackUrl()} className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors">
                 <span className="text-2xl">←</span>
                 <span className="font-bold">もどる</span>
               </Link>
-              <Link href="/kids" className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
+              <Link href={getBackUrl()} className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
                 <span className="text-2xl">🏠</span>
                 <span className="font-bold text-xl">シルシル</span>
               </Link>
             </div>
             <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">🧒</span>
+                <span className="text-sm font-medium text-gray-600">{childName} さん</span>
+              </div>
               <button
                 onClick={() => setShowFurigana(!showFurigana)}
                 className={`px-4 py-2 rounded-full font-medium transition-colors ${
@@ -671,8 +712,8 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
 
         {/* ナビゲーション */}
         <div className="mt-8 flex justify-center space-x-4">
-          <Link 
-            href={fromParent ? "/parent" : "/kids"}
+          <Link
+            href={getBackUrl()}
             className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-full font-bold text-lg transition-all duration-300 shadow-lg transform hover:scale-105"
           >
             ニュースいちらんに もどる

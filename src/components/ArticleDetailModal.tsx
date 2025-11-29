@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react';
+import ConvertedArticleModal, { ConvertedArticle } from './ConvertedArticleModal';
+import { getAuthSession } from '../lib/auth';
 
 export interface ArticleDetail {
   title: string;
@@ -19,6 +21,41 @@ interface ArticleDetailModalProps {
   onConvert?: (articleDetail: ArticleDetail) => void;
 }
 
+// マークダウン風のテキストを分析してJSX要素に変換する関数
+function parseContentToJSX(content: string) {
+  return content.split('\n').map((line, index) => {
+    // 引用コメントの処理 (> text → 引用スタイル)
+    if (line.startsWith('> ')) {
+      const quoteText = line.substring(2);
+      return (
+        <div key={index} className="border-l-4 border-blue-400 pl-4 py-2 my-3 bg-blue-50 text-gray-700 italic">
+          {quoteText}
+        </div>
+      );
+    }
+    
+    // 太字の処理 (**text** → <strong>text</strong>)
+    const processedLine = line.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    
+    if (processedLine.includes('<strong>')) {
+      // HTMLが含まれている場合はdangerouslySetInnerHTMLを使用
+      return (
+        <div 
+          key={index} 
+          dangerouslySetInnerHTML={{ __html: processedLine }}
+          className={processedLine.includes('<strong>') ? 'font-semibold text-gray-800 mb-2' : ''}
+        />
+      );
+    } else if (line.trim() === '') {
+      // 空行
+      return <br key={index} />;
+    } else {
+      // 通常のテキスト
+      return <div key={index}>{line}</div>;
+    }
+  });
+}
+
 export default function ArticleDetailModal({ 
   isOpen, 
   onClose, 
@@ -28,6 +65,12 @@ export default function ArticleDetailModal({
   const [articleDetail, setArticleDetail] = useState<ArticleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 変換機能用の状態
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const [convertedArticle, setConvertedArticle] = useState<ConvertedArticle | null>(null);
+  const [showConvertedModal, setShowConvertedModal] = useState(false);
 
   // モーダルが開いた時に記事詳細を取得
   useEffect(() => {
@@ -75,9 +118,57 @@ export default function ArticleDetailModal({
     }
   };
 
-  const handleConvert = () => {
-    if (articleDetail && onConvert) {
-      onConvert(articleDetail);
+  const handleConvert = async () => {
+    if (!articleDetail) return;
+    
+    setIsConverting(true);
+    setConvertError(null);
+    
+    try {
+      console.log(`🔄 記事変換開始: ${articleDetail.title}`);
+      
+      // 認証情報を取得
+      const session = getAuthSession();
+      if (!session) {
+        throw new Error('認証情報がありません。再度ログインしてください。');
+      }
+      
+      const response = await fetch('/api/convert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Session': JSON.stringify(session), // 認証ヘッダーを追加
+        },
+        body: JSON.stringify({
+          title: articleDetail.title,
+          content: articleDetail.content,
+          originalUrl: articleDetail.url,
+          image: articleDetail.image,
+          source: articleDetail.source
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`変換APIエラー: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setConvertedArticle(result.convertedArticle);
+        setShowConvertedModal(true);
+        console.log(`✅ 記事変換完了: ${result.convertedArticle.title}`);
+        
+        // 元のモーダルを閉じる
+        onClose();
+      } else {
+        throw new Error(result.error || '記事の変換に失敗しました');
+      }
+    } catch (error) {
+      console.error('記事変換エラー:', error);
+      setConvertError(error instanceof Error ? error.message : '記事の変換に失敗しました');
+    } finally {
+      setIsConverting(false);
     }
   };
 
@@ -153,21 +244,12 @@ export default function ArticleDetailModal({
                   <span>🏢 {articleDetail.source || 'ニュースソース'}</span>
                 </div>
                 
-                {/* 完全タイトル表示（RSSタイトルと異なる場合） */}
-                {articleDetail.title.length > 20 && (
-                  <div className="bg-blue-50 border-l-4 border-blue-400 p-3 mb-4">
-                    <div className="text-sm text-blue-800">
-                      <span className="font-medium">📰 記事の完全タイトル：</span>
-                      <div className="mt-1">{articleDetail.title}</div>
-                    </div>
-                  </div>
-                )}
               </div>
               
               {/* 本文 */}
               <div className="prose max-w-none">
-                <div className="text-gray-700 leading-relaxed whitespace-pre-line">
-                  {articleDetail.content}
+                <div className="text-gray-700 leading-relaxed">
+                  {parseContentToJSX(articleDetail.content)}
                 </div>
               </div>
               
@@ -189,6 +271,11 @@ export default function ArticleDetailModal({
         {/* フッター */}
         {!isLoading && !error && articleDetail && (
           <div className="border-t border-gray-200 p-6 bg-gray-50">
+            {convertError && (
+              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                ❌ {convertError}
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-600">
                 この記事を子供向けに変換しますか？
@@ -196,19 +283,38 @@ export default function ArticleDetailModal({
               <div className="flex space-x-3">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                  disabled={isConverting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   キャンセル
                 </button>
                 <button
                   onClick={handleConvert}
-                  className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-colors font-medium"
+                  disabled={isConverting}
+                  className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                 >
-                  🔄 変換する
+                  {isConverting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      変換中...
+                    </>
+                  ) : (
+                    '🔄 変換する'
+                  )}
                 </button>
               </div>
             </div>
           </div>
+        )}
+        
+        {/* 変換された記事のモーダル */}
+        {convertedArticle && (
+          <ConvertedArticleModal
+            isOpen={showConvertedModal}
+            onClose={() => setShowConvertedModal(false)}
+            convertedArticle={convertedArticle}
+            originalUrl={articleDetail?.url || ''}
+          />
         )}
       </div>
     </div>

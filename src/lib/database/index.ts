@@ -101,12 +101,62 @@ class DatabaseManager {
     return this.provider.getUser(id);
   }
 
+  async getUsers(filters?: Parameters<DatabaseProvider['getUsers']>[0]) {
+    return this.provider.getUsers(filters);
+  }
+
   async createUser(user: Parameters<DatabaseProvider['createUser']>[0]) {
     return this.provider.createUser(user);
   }
 
   async updateUser(id: string, updates: Parameters<DatabaseProvider['updateUser']>[1]) {
     return this.provider.updateUser(id, updates);
+  }
+
+  async deactivateUser(id: string) {
+    return this.provider.deactivateUser(id);
+  }
+
+  // 組織管理メソッド
+  async getOrganization(id: string) {
+    return this.provider.getOrganization(id);
+  }
+
+  async getOrganizations(filters?: Parameters<DatabaseProvider['getOrganizations']>[0]) {
+    return this.provider.getOrganizations(filters);
+  }
+
+  async createOrganization(org: Parameters<DatabaseProvider['createOrganization']>[0]) {
+    return this.provider.createOrganization(org);
+  }
+
+  async updateOrganization(id: string, updates: Parameters<DatabaseProvider['updateOrganization']>[1]) {
+    return this.provider.updateOrganization(id, updates);
+  }
+
+  // 招待管理メソッド
+  async createInvitation(invitation: Parameters<DatabaseProvider['createInvitation']>[0]) {
+    return this.provider.createInvitation(invitation);
+  }
+
+  async getInvitation(code: string) {
+    return this.provider.getInvitation(code);
+  }
+
+  async getInvitations(filters?: Parameters<DatabaseProvider['getInvitations']>[0]) {
+    return this.provider.getInvitations(filters);
+  }
+
+  async acceptInvitation(code: string, userId: string) {
+    return this.provider.acceptInvitation(code, userId);
+  }
+
+  async expireInvitation(code: string) {
+    return this.provider.expireInvitation(code);
+  }
+
+  async updateInvitation(id: string, updates: any) {
+    return this.provider.updateInvitation(id, updates);
   }
 
   async addReaction(articleId: number, userId: string, reaction: string) {
@@ -133,8 +183,8 @@ class DatabaseManager {
     return this.provider.answerQuestion(id, answer);
   }
 
-  async getStats(userId?: string) {
-    return this.provider.getStats(userId);
+  async getStats(filters?: Parameters<DatabaseProvider['getStats']>[0]) {
+    return this.provider.getStats(filters);
   }
 
   async testConnection() {

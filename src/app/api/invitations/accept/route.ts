@@ -26,17 +26,14 @@ export async function POST(request: NextRequest) {
     
     // 招待コードは何度でも使用可能（期限・使用済みチェックなし）
     // status チェックと期限チェックを削除
-    
-    // ユーザーアカウントの作成
-    const userId = `user-${Date.now()}`;
-    
+
+    // ユーザーアカウントの作成（idを指定しないとデータベースがUUIDを自動生成）
     const newUser = await db.createUser({
-      id: userId,
       email: email || invitation.email,
       displayName: displayName || `New ${invitation.targetType}`,
       userType: invitation.targetType,
       parentId: invitation.parentId,
-      masterId: invitation.inviterId === 'master-1' ? invitation.inviterId : undefined,
+      masterId: invitation.inviterType === 'master' ? invitation.inviterId : undefined,
       organizationId: invitation.organizationId,
       isActive: true,
       createdBy: invitation.inviterId

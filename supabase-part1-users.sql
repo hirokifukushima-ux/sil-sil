@@ -1,0 +1,15 @@
+-- Part 1: Users テーブルのみ更新
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS child_age INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS parent_id UUID;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS master_id UUID;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id UUID;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_users_user_type ON users(user_type);
+CREATE INDEX IF NOT EXISTS idx_users_parent_id ON users(parent_id);
+CREATE INDEX IF NOT EXISTS idx_users_master_id ON users(master_id);

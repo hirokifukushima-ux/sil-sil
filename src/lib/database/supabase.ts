@@ -1,11 +1,13 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { 
-  DatabaseProvider, 
-  Article, 
-  User, 
-  ArticleReaction, 
-  Question, 
-  DatabaseError 
+import {
+  DatabaseProvider,
+  Article,
+  User,
+  Organization,
+  Invitation,
+  ArticleReaction,
+  Question,
+  DatabaseError
 } from './types';
 
 export class SupabaseProvider implements DatabaseProvider {
@@ -206,6 +208,273 @@ export class SupabaseProvider implements DatabaseProvider {
     }
   }
 
+  async getUsers(filters?: {
+    userType?: 'master' | 'parent' | 'child';
+    parentId?: string;
+    masterId?: string;
+    organizationId?: string;
+    isActive?: boolean;
+  }): Promise<User[]> {
+    try {
+      let query = this.client.from('users').select('*');
+
+      if (filters?.userType) {
+        query = query.eq('user_type', filters.userType);
+      }
+
+      if (filters?.parentId) {
+        query = query.eq('parent_id', filters.parentId);
+      }
+
+      if (filters?.masterId) {
+        query = query.eq('master_id', filters.masterId);
+      }
+
+      if (filters?.organizationId) {
+        query = query.eq('organization_id', filters.organizationId);
+      }
+
+      if (filters?.isActive !== undefined) {
+        query = query.eq('is_active', filters.isActive);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        throw new DatabaseError(`ユーザー一覧取得エラー: ${error.message}`, error.code);
+      }
+
+      return data?.map(this.transformUserFromDB) || [];
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('ユーザー一覧取得中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async deactivateUser(id: string): Promise<boolean> {
+    try {
+      const { error } = await this.client
+        .from('users')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) {
+        throw new DatabaseError(`ユーザー無効化エラー: ${error.message}`, error.code);
+      }
+
+      return true;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      return false;
+    }
+  }
+
+  // 組織操作
+  async getOrganization(id: string): Promise<Organization | null> {
+    try {
+      const { data, error } = await this.client
+        .from('organizations')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Record not found
+        throw new DatabaseError(`組織取得エラー: ${error.message}`, error.code);
+      }
+
+      return data ? this.transformOrganizationFromDB(data) : null;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('組織取得中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async getOrganizations(filters?: {
+    masterId?: string;
+    isActive?: boolean;
+  }): Promise<Organization[]> {
+    try {
+      let query = this.client.from('organizations').select('*');
+
+      if (filters?.masterId) {
+        query = query.eq('master_id', filters.masterId);
+      }
+
+      if (filters?.isActive !== undefined) {
+        query = query.eq('is_active', filters.isActive);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        throw new DatabaseError(`組織一覧取得エラー: ${error.message}`, error.code);
+      }
+
+      return data?.map(this.transformOrganizationFromDB) || [];
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('組織一覧取得中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async createOrganization(org: Omit<Organization, 'id' | 'createdAt' | 'updatedAt'>): Promise<Organization> {
+    try {
+      const { data, error } = await this.client
+        .from('organizations')
+        .insert([this.transformOrganizationToDB(org)])
+        .select()
+        .single();
+
+      if (error) {
+        throw new DatabaseError(`組織作成エラー: ${error.message}`, error.code);
+      }
+
+      return this.transformOrganizationFromDB(data);
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('組織作成中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async updateOrganization(id: string, updates: Partial<Organization>): Promise<Organization | null> {
+    try {
+      const updateData = this.transformOrganizationToDB(updates);
+      updateData.updated_at = new Date().toISOString();
+
+      const { data, error } = await this.client
+        .from('organizations')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Record not found
+        throw new DatabaseError(`組織更新エラー: ${error.message}`, error.code);
+      }
+
+      return data ? this.transformOrganizationFromDB(data) : null;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('組織更新中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  // 招待操作
+  async createInvitation(invitation: Omit<Invitation, 'id' | 'createdAt' | 'code'>): Promise<Invitation> {
+    try {
+      // 招待コードを生成
+      const code = this.generateInvitationCode();
+
+      const { data, error } = await this.client
+        .from('invitations')
+        .insert([this.transformInvitationToDB({ ...invitation, code })])
+        .select()
+        .single();
+
+      if (error) {
+        throw new DatabaseError(`招待作成エラー: ${error.message}`, error.code);
+      }
+
+      return this.transformInvitationFromDB(data);
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('招待作成中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async getInvitation(code: string): Promise<Invitation | null> {
+    try {
+      const { data, error } = await this.client
+        .from('invitations')
+        .select('*')
+        .eq('code', code)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Record not found
+        throw new DatabaseError(`招待取得エラー: ${error.message}`, error.code);
+      }
+
+      return data ? this.transformInvitationFromDB(data) : null;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('招待取得中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async getInvitations(filters?: {
+    inviterId?: string;
+    status?: 'pending' | 'accepted' | 'expired';
+  }): Promise<Invitation[]> {
+    try {
+      let query = this.client.from('invitations').select('*');
+
+      if (filters?.inviterId) {
+        query = query.eq('inviter_id', filters.inviterId);
+      }
+
+      if (filters?.status) {
+        query = query.eq('status', filters.status);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        throw new DatabaseError(`招待一覧取得エラー: ${error.message}`, error.code);
+      }
+
+      return data?.map(this.transformInvitationFromDB) || [];
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('招待一覧取得中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
+  async acceptInvitation(code: string, userId: string): Promise<boolean> {
+    try {
+      const { error } = await this.client
+        .from('invitations')
+        .update({
+          status: 'accepted',
+          accepted_user_id: userId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('code', code);
+
+      if (error) {
+        throw new DatabaseError(`招待受諾エラー: ${error.message}`, error.code);
+      }
+
+      return true;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      return false;
+    }
+  }
+
+  async expireInvitation(code: string): Promise<boolean> {
+    try {
+      const { error } = await this.client
+        .from('invitations')
+        .update({
+          status: 'expired',
+          updated_at: new Date().toISOString()
+        })
+        .eq('code', code);
+
+      if (error) {
+        throw new DatabaseError(`招待期限切れエラー: ${error.message}`, error.code);
+      }
+
+      return true;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      return false;
+    }
+  }
+
   // リアクション操作
   async addReaction(articleId: number, userId: string, reaction: string): Promise<boolean> {
     try {
@@ -362,31 +631,68 @@ export class SupabaseProvider implements DatabaseProvider {
   }
 
   // 統計・管理
-  async getStats(userId?: string): Promise<{
+  async getStats(filters?: {
+    userId?: string;
+    parentId?: string;
+    organizationId?: string;
+  }): Promise<{
     totalArticles: number;
     readArticles: number;
     readingRate: number;
     categoryCounts: { [key: string]: number };
+    userCounts?: {
+      totalUsers: number;
+      activeUsers: number;
+      parents: number;
+      children: number;
+    };
   }> {
     try {
-      // 記事総数
-      const { count: totalArticles } = await this.client
+      // 記事総数クエリ
+      let articlesQuery = this.client
         .from('articles')
         .select('count', { count: 'exact', head: true })
         .eq('is_archived', false);
 
-      // 既読記事数
-      const { count: readArticles } = await this.client
+      if (filters?.parentId) {
+        articlesQuery = articlesQuery.eq('parent_id', filters.parentId);
+      }
+      if (filters?.organizationId) {
+        articlesQuery = articlesQuery.eq('organization_id', filters.organizationId);
+      }
+
+      const { count: totalArticles } = await articlesQuery;
+
+      // 既読記事数クエリ
+      let readQuery = this.client
         .from('articles')
         .select('count', { count: 'exact', head: true })
         .eq('is_archived', false)
         .eq('has_read', true);
 
-      // カテゴリ別統計
-      const { data: categoryData } = await this.client
+      if (filters?.parentId) {
+        readQuery = readQuery.eq('parent_id', filters.parentId);
+      }
+      if (filters?.organizationId) {
+        readQuery = readQuery.eq('organization_id', filters.organizationId);
+      }
+
+      const { count: readArticles } = await readQuery;
+
+      // カテゴリ別統計クエリ
+      let categoryQuery = this.client
         .from('articles')
         .select('category')
         .eq('is_archived', false);
+
+      if (filters?.parentId) {
+        categoryQuery = categoryQuery.eq('parent_id', filters.parentId);
+      }
+      if (filters?.organizationId) {
+        categoryQuery = categoryQuery.eq('organization_id', filters.organizationId);
+      }
+
+      const { data: categoryData } = await categoryQuery;
 
       const categoryCounts: { [key: string]: number } = {};
       categoryData?.forEach((article) => {
@@ -396,12 +702,47 @@ export class SupabaseProvider implements DatabaseProvider {
       const total = totalArticles || 0;
       const read = readArticles || 0;
 
-      return {
+      const result: any = {
         totalArticles: total,
         readArticles: read,
         readingRate: total > 0 ? Math.round((read / total) * 100) : 0,
         categoryCounts
       };
+
+      // ユーザー統計（organizationIdが指定された場合のみ）
+      if (filters?.organizationId) {
+        const { count: totalUsers } = await this.client
+          .from('users')
+          .select('count', { count: 'exact', head: true })
+          .eq('organization_id', filters.organizationId);
+
+        const { count: activeUsers } = await this.client
+          .from('users')
+          .select('count', { count: 'exact', head: true })
+          .eq('organization_id', filters.organizationId)
+          .eq('is_active', true);
+
+        const { count: parents } = await this.client
+          .from('users')
+          .select('count', { count: 'exact', head: true })
+          .eq('organization_id', filters.organizationId)
+          .eq('user_type', 'parent');
+
+        const { count: children } = await this.client
+          .from('users')
+          .select('count', { count: 'exact', head: true })
+          .eq('organization_id', filters.organizationId)
+          .eq('user_type', 'child');
+
+        result.userCounts = {
+          totalUsers: totalUsers || 0,
+          activeUsers: activeUsers || 0,
+          parents: parents || 0,
+          children: children || 0
+        };
+      }
+
+      return result;
     } catch (error) {
       throw new DatabaseError('統計取得中に予期しないエラーが発生しました', undefined, error);
     }
@@ -540,5 +881,85 @@ export class SupabaseProvider implements DatabaseProvider {
     }
 
     return dbQuestion;
+  }
+
+  private transformOrganizationFromDB(dbOrg: Record<string, any>): Organization {
+    return {
+      id: dbOrg.id,
+      name: dbOrg.name,
+      masterId: dbOrg.master_id,
+      isActive: dbOrg.is_active,
+      createdAt: dbOrg.created_at,
+      updatedAt: dbOrg.updated_at
+    };
+  }
+
+  private transformOrganizationToDB(org: Partial<Organization>): Record<string, any> {
+    const dbOrg: any = {};
+
+    if (org.id !== undefined) dbOrg.id = org.id;
+    if (org.name !== undefined) dbOrg.name = org.name;
+    if (org.masterId !== undefined) dbOrg.master_id = org.masterId;
+    if (org.isActive !== undefined) dbOrg.is_active = org.isActive;
+
+    // 作成時の自動設定
+    if (!org.createdAt && !dbOrg.created_at) {
+      dbOrg.created_at = new Date().toISOString();
+    }
+    if (!org.updatedAt && !dbOrg.updated_at) {
+      dbOrg.updated_at = new Date().toISOString();
+    }
+
+    return dbOrg;
+  }
+
+  private transformInvitationFromDB(dbInvitation: Record<string, any>): Invitation {
+    return {
+      id: dbInvitation.id,
+      email: dbInvitation.email,
+      inviterType: dbInvitation.inviter_type,
+      inviterId: dbInvitation.inviter_id,
+      targetType: dbInvitation.target_type,
+      organizationId: dbInvitation.organization_id,
+      parentId: dbInvitation.parent_id,
+      status: dbInvitation.status,
+      code: dbInvitation.code,
+      expiresAt: dbInvitation.expires_at,
+      createdAt: dbInvitation.created_at,
+      acceptedUserId: dbInvitation.accepted_user_id
+    };
+  }
+
+  private transformInvitationToDB(invitation: Partial<Invitation>): Record<string, any> {
+    const dbInvitation: any = {};
+
+    if (invitation.id !== undefined) dbInvitation.id = invitation.id;
+    if (invitation.email !== undefined) dbInvitation.email = invitation.email;
+    if (invitation.inviterType !== undefined) dbInvitation.inviter_type = invitation.inviterType;
+    if (invitation.inviterId !== undefined) dbInvitation.inviter_id = invitation.inviterId;
+    if (invitation.targetType !== undefined) dbInvitation.target_type = invitation.targetType;
+    if (invitation.organizationId !== undefined) dbInvitation.organization_id = invitation.organizationId;
+    if (invitation.parentId !== undefined) dbInvitation.parent_id = invitation.parentId;
+    if (invitation.status !== undefined) dbInvitation.status = invitation.status;
+    if (invitation.code !== undefined) dbInvitation.code = invitation.code;
+    if (invitation.expiresAt !== undefined) dbInvitation.expires_at = invitation.expiresAt;
+    if (invitation.acceptedUserId !== undefined) dbInvitation.accepted_user_id = invitation.acceptedUserId;
+
+    // 作成時の自動設定
+    if (!invitation.createdAt && !dbInvitation.created_at) {
+      dbInvitation.created_at = new Date().toISOString();
+    }
+
+    return dbInvitation;
+  }
+
+  private generateInvitationCode(): string {
+    // 8文字のランダムな招待コードを生成（大文字英数字）
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
   }
 }

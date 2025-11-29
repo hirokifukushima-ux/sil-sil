@@ -5,6 +5,30 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearUserType, requireAuth } from "../../lib/auth";
 
+// カテゴリ表示のヘルパー関数
+function getDisplayCategory(category: string, originalTitle?: string): string {
+  if (category === 'converted' && originalTitle) {
+    // 既存の "converted" カテゴリの記事は、タイトルからカテゴリを推定
+    const keywords = {
+      'スポーツ': ['野球', 'サッカー', 'テニス', 'ゴルフ', 'バスケ', 'オリンピック', '選手', 'チーム', '試合', '勝利', '敗戦', 'FA', 'WS', 'ワールドシリーズ', 'カブス', 'パドレス', 'ドジャース'],
+      '科学': ['宇宙', '火星', '探査機', 'NASA', '化石', '恐竜', '研究', '発見', '実験', '技術'],
+      '政治': ['政府', '市長', '選挙', '政策', '法案', '国会', '首相', '大統領'],
+      '経済': ['株価', '経済', '企業', '売上', '業績', '投資', '金融', '銀行', 'GDP'],
+      '教育': ['学校', '大学', '高校', '中学', '小学', '教育', '授業', '先生', '教員', 'ストライキ', '日大'],
+      '国際': ['海外', '米国', 'アメリカ', '中国', '韓国', '欧州', 'トロント', 'カナダ', 'ロサンゼルス'],
+      '社会': ['事件', '事故', '裁判', '逮捕', '判決', '警察', '消防']
+    };
+
+    for (const [cat, keywordList] of Object.entries(keywords)) {
+      if (keywordList.some(keyword => originalTitle.includes(keyword))) {
+        return cat;
+      }
+    }
+    return 'ニュース';
+  }
+  return category;
+}
+
 export default function KidsNews() {
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -28,6 +52,7 @@ export default function KidsNews() {
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [childName, setChildName] = useState<string>('お子さま');
 
   // アクセス制御チェック
   useEffect(() => {
@@ -37,6 +62,30 @@ export default function KidsNews() {
     }
     setIsAuthorized(true);
   }, [router]);
+
+  // 子アカウント名を取得
+  useEffect(() => {
+    if (!isAuthorized) return;
+    const fetchChildProfile = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const childId = urlParams.get('childId');
+
+        if (!childId) return;
+
+        const response = await fetch(`/api/child/profile?childId=${childId}`);
+        const result = await response.json();
+
+        if (result.success && result.profile) {
+          setChildName(result.profile.displayName || 'お子さま');
+        }
+      } catch (error) {
+        console.error('子アカウント情報取得エラー:', error);
+      }
+    };
+
+    fetchChildProfile();
+  }, [isAuthorized]);
 
   // APIとローカルストレージから記事データを取得
   useEffect(() => {
@@ -57,21 +106,114 @@ export default function KidsNews() {
         }> = [];
         
         // APIから記事を取得（データベース優先で一元管理）
+        // 古いlocalStorageデータをクリア
+        console.log('🧹 古いキッズ記事データをクリア中...');
+        const keysToRemove = Object.keys(localStorage).filter(key => 
+          key.includes('articles') || key.includes('news') || key.includes('kids')
+        );
+        keysToRemove.forEach(key => {
+          localStorage.removeItem(key);
+          console.log(`🗑️ 削除: ${key}`);
+        });
+        
         try {
-          const response = await fetch('/api/articles/child/8');
+          // URLパラメータから子アカウントIDを取得
+          const urlParams = new URLSearchParams(window.location.search);
+          const childId = urlParams.get('childId');
+          
+          if (!childId) {
+            console.error('🚨 子アカウントIDが見つかりません');
+            return;
+          }
+          
+          // 子アカウント用のセッション情報を作成
+          // 親のセッション情報を取得し、子アカウント用に変換
+          const parentSession = JSON.parse(localStorage.getItem('authSession') || '{}');
+          console.log('🔍 localStorage.authSession:', parentSession);
+          
+          // 子アカウント情報をAPIから取得して親IDを動的に設定
+          let parentId = null;
+          try {
+            console.log('🔍 子アカウント情報を取得中...', childId);
+            const childInfoResponse = await fetch('/api/debug');
+            if (childInfoResponse.ok) {
+              const debugData = await childInfoResponse.json();
+              const childUser = debugData.users.all.find((user: any) => user.id === childId);
+              if (childUser && childUser.parentId) {
+                parentId = childUser.parentId;
+                console.log('✅ データベースから親IDを取得:', parentId);
+              } else {
+                console.warn('⚠️ 子アカウントの親IDが見つかりません');
+              }
+            }
+          } catch (debugError) {
+            console.error('🚨 子アカウント情報取得エラー:', debugError);
+          }
+          
+          // フォールバック: localStorageから親IDを取得
+          if (!parentId) {
+            parentId = parentSession.userId;
+            console.log('🔄 localStorageから親IDを取得:', parentId);
+          }
+          
+          // 親IDが設定されていない場合のエラーハンドリング
+          if (!parentId) {
+            console.error('🚨 親アカウントIDが取得できません。APIコールを中止します。');
+            console.error('🚨 childId:', childId);
+            console.error('🚨 parentSession:', parentSession);
+            setError('親アカウント情報が見つかりません。ログインし直してください。');
+            return; // APIコールを実行しない
+          }
+          
+          const childSession = {
+            userId: childId,
+            userType: 'child',
+            parentId: parentId,
+            masterId: parentSession.masterId || 'master-1',
+            organizationId: parentSession.organizationId || 'org-1'
+          };
+          
+          console.log('🧸 親セッション情報:', parentSession);
+          console.log('🧸 子アカウントセッション情報:', childSession);
+          console.log('🧸 取得した親ID:', parentId);
+          
+          const response = await fetch(`/api/articles/child/${childId}`, {
+            headers: {
+              'X-Auth-Session': JSON.stringify(childSession)
+            }
+          });
           const result = await response.json();
           
-          if (result.success && result.articles.length > 0) {
+          console.log('📡 APIレスポンス:', result);
+          console.log('📊 取得記事数:', result.articles?.length || 0);
+          
+          if (result.success && result.articles && result.articles.length > 0) {
             allArticles = result.articles.filter((article: {
               isArchived?: boolean;
             }) => article.isArchived !== true);
-            console.log(`🗄️ データベースから${allArticles.length}件の記事を取得`);
+            
+            console.log(`🗄️ APIから${result.articles.length}件取得、フィルタ後${allArticles.length}件`);
+            console.log('📰 記事ID一覧:', allArticles.map(a => a.id));
+            
+            // Y387DTQLアカウントの記事数確認
+            if (childId === 'child-1762587382839-ub62wtn6d') {
+              console.log(`✅ Y387DTQLアカウント記事数: ${allArticles.length}件`);
+            }
+          } else {
+            console.warn('⚠️ APIからの記事取得に失敗または0件:', result);
           }
         } catch (error) {
           console.warn('データベース記事取得エラー:', error);
         }
         
         if (allArticles.length > 0) {
+          // Y387DTQLアカウントの記事数ログ
+          const currentChildId = new URLSearchParams(window.location.search).get('childId');
+          if (currentChildId === 'child-1762587382839-ub62wtn6d') {
+            console.log(`🎯 Y387DTQL子アカウント：${allArticles.length}件の記事を表示`);
+            console.log('📰 記事詳細:', allArticles.map(a => `ID:${a.id} タイトル:${a.convertedTitle}`));
+          }
+          
           // 最新順にソート（日付の新しい順）
           const sortedArticles = allArticles.sort((a, b) => 
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -88,27 +230,30 @@ export default function KidsNews() {
             convertedContent: string;
             reactions: string[];
           }) => {
+            // カテゴリ表示を適切に処理
+            const displayCategory = getDisplayCategory(article.category, article.convertedTitle);
+            
             // 動的な色とemoji設定
             let categoryColor = 'bg-purple-400';
             let emoji = '📰';
             
-            if (article.category) {
-              if (article.category.includes('かがく') || article.category.includes('科学')) {
+            if (displayCategory) {
+              if (displayCategory.includes('かがく') || displayCategory.includes('科学')) {
                 categoryColor = 'bg-blue-400';
                 emoji = '🔬';
-              } else if (article.category.includes('スポーツ')) {
+              } else if (displayCategory.includes('スポーツ')) {
                 categoryColor = 'bg-green-400';
                 emoji = '⚽';
-              } else if (article.category.includes('ぶんか') || article.category.includes('文化')) {
+              } else if (displayCategory.includes('ぶんか') || displayCategory.includes('文化')) {
                 categoryColor = 'bg-pink-400';
                 emoji = '🎨';
-              } else if (article.category.includes('けいざい') || article.category.includes('経済')) {
+              } else if (displayCategory.includes('けいざい') || displayCategory.includes('経済')) {
                 categoryColor = 'bg-yellow-400';
                 emoji = '💰';
-              } else if (article.category.includes('せいじ') || article.category.includes('政治')) {
+              } else if (displayCategory.includes('せいじ') || displayCategory.includes('政治')) {
                 categoryColor = 'bg-red-400';
                 emoji = '🏛️';
-              } else if (article.category.includes('しゃかい') || article.category.includes('社会')) {
+              } else if (displayCategory.includes('しゃかい') || displayCategory.includes('社会')) {
                 categoryColor = 'bg-teal-400';
                 emoji = '🌍';
               }
@@ -135,7 +280,7 @@ export default function KidsNews() {
               title: article.convertedTitle,
               titleFurigana: article.convertedTitle,
               summary: article.convertedSummary,
-              category: article.category,
+              category: displayCategory,
               categoryColor: categoryColor,
               emoji: emoji,
               readTime: "3ぷん",
@@ -203,7 +348,13 @@ export default function KidsNews() {
     : newsArticles.filter(article => article.category === selectedCategory);
 
   const handleReadArticle = (articleId: number) => {
-    window.location.href = `/kids/article/${articleId}`;
+    // childIdをURLパラメータから取得して記事詳細ページに渡す
+    const urlParams = new URLSearchParams(window.location.search);
+    const childId = urlParams.get('childId');
+    const articleUrl = childId
+      ? `/kids/article/${articleId}?childId=${childId}`
+      : `/kids/article/${articleId}`;
+    window.location.href = articleUrl;
   };
 
   const handleReaction = async (articleId: number, reaction: string) => {
@@ -273,6 +424,16 @@ export default function KidsNews() {
     router.push('/login');
   };
 
+  const handleQuestionClick = () => {
+    // childIdをURLパラメータから取得して質問ページに渡す
+    const urlParams = new URLSearchParams(window.location.search);
+    const childId = urlParams.get('childId');
+    const questionUrl = childId
+      ? `/kids/questions?childId=${childId}`
+      : '/kids/questions';
+    window.location.href = questionUrl;
+  };
+
   // 未認証の場合は何も表示しない（リダイレクト中）
   if (!isAuthorized) {
     return (
@@ -340,7 +501,7 @@ export default function KidsNews() {
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <span className="text-lg">🧒</span>
-                  <span className="text-sm font-medium text-gray-600">こども モード</span>
+                  <span className="text-sm font-medium text-gray-600">{childName} さん</span>
                 </div>
                 {/* もどるボタン - 子供は自分のページで完結するため不要 */}
                 {/* <button
@@ -593,7 +754,10 @@ export default function KidsNews() {
 
         {/* 親への質問ボタン */}
         <div className="mt-8 text-center">
-          <button className="bg-gradient-to-r from-pink-400 to-red-400 text-white px-8 py-4 rounded-full font-bold text-lg hover:from-pink-500 hover:to-red-500 transition-all duration-300 shadow-lg transform hover:scale-105">
+          <button
+            onClick={handleQuestionClick}
+            className="bg-gradient-to-r from-pink-400 to-red-400 text-white px-8 py-4 rounded-full font-bold text-lg hover:from-pink-500 hover:to-red-500 transition-all duration-300 shadow-lg transform hover:scale-105"
+          >
             おとうさん・おかあさんに しつもん する 💬
           </button>
         </div>
