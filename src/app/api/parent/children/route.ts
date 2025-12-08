@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
         targetType: 'child',
         parentId: parentId,
         status: 'pending',
+        type: 'public', // 子アカウント用は再利用可能
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30日後
       });
       
@@ -159,6 +160,7 @@ export async function POST(request: NextRequest) {
         targetType: 'child',
         parentId: parentId,
         status: 'pending',
+        type: 'public', // 子アカウント用は再利用可能
         expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1年後
       });
       

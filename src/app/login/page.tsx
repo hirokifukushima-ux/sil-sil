@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { setAuthSession } from "../../lib/auth";
+import { setAuthSession, clearAuthSession } from "../../lib/auth";
+import { signInWithEmail } from "@/lib/supabase/auth";
+import { getDatabase } from "@/lib/database";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +17,9 @@ export default function LoginPage() {
   const [invitationCode, setInvitationCode] = useState('');
   const [showActivationForm, setShowActivationForm] = useState(false);
   const [activationCode, setActivationCode] = useState('');
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
 
   // パスワード設定
   const PASSWORDS = {
@@ -62,6 +67,9 @@ export default function LoginPage() {
         // 認証成功 - データベースから取得したユーザー情報を使用
         console.log(`🔑 ログイン成功: ${selectedUserType}`, result.user);
 
+        // 古いセッションをクリア
+        clearAuthSession();
+
         setAuthSession({
           userId: result.user.id,
           userType: result.user.userType,
@@ -85,6 +93,9 @@ export default function LoginPage() {
 
         // 認証成功 - 一時的なIDを使用
         console.log(`🔑 ログイン成功: ${selectedUserType}`);
+
+        // 古いセッションをクリア
+        clearAuthSession();
 
         setAuthSession({
           userId: `${selectedUserType}-${Date.now()}`,
@@ -121,14 +132,14 @@ export default function LoginPage() {
 
     try {
       // 招待コードでログイン（新規作成または再ログイン）
-      const response = await fetch('/api/auth/invitation-login', {
+      const response = await fetch('/api/invitations/accept', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           code: invitationCode.trim(),
-          email: 'user@example.com',
+          // emailはnull（後で設定可能な仮アカウント）
           displayName: 'New Parent'
         }),
       });
@@ -136,7 +147,9 @@ export default function LoginPage() {
       const result = await response.json();
 
       if (response.ok) {
-        // 成功 - 親アカウントとしてログイン
+        // 成功 - 古いセッションをクリアしてから親アカウントとしてログイン
+        clearAuthSession();
+
         setAuthSession({
           userId: result.user.id,
           userType: 'parent',
@@ -188,7 +201,9 @@ export default function LoginPage() {
       const result = await response.json();
 
       if (response.ok) {
-        // 成功 - 子アカウントとしてログイン
+        // 成功 - 古いセッションをクリアしてから子アカウントとしてログイン
+        clearAuthSession();
+
         setAuthSession({
           userId: result.user.id,
           userType: 'child',
@@ -212,6 +227,65 @@ export default function LoginPage() {
     }
   };
 
+  const handleEmailLogin = async () => {
+    if (!email.trim() || !emailPassword.trim()) {
+      setError('メールアドレスとパスワードを入力してください');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      // Supabase Authでログイン
+      const result = await signInWithEmail(email, emailPassword);
+
+      if (!result.success) {
+        setError(result.error || 'ログインに失敗しました');
+        setIsLoading(false);
+        return;
+      }
+
+      // ユーザー情報を取得
+      const db = getDatabase();
+      const user = await db.getUser(result.userId);
+
+      if (!user) {
+        setError('ユーザー情報が見つかりません');
+        setIsLoading(false);
+        return;
+      }
+
+      // セッションを設定
+      setAuthSession({
+        userId: user.id,
+        userType: user.userType,
+        email: user.email || result.email,
+        displayName: user.displayName,
+        parentId: user.parentId,
+        masterId: user.masterId,
+        organizationId: user.organizationId
+      });
+
+      console.log('✅ メール・パスワードログイン成功:', user.displayName);
+
+      // ユーザータイプに応じてリダイレクト
+      if (user.userType === 'parent') {
+        router.push('/parent');
+      } else if (user.userType === 'child') {
+        router.push('/kids');
+      } else if (user.userType === 'master') {
+        router.push('/master');
+      } else {
+        router.push('/');
+      }
+    } catch (error) {
+      console.error('メール・パスワードログインエラー:', error);
+      setError('ログイン中にエラーが発生しました');
+      setIsLoading(false);
+    }
+  };
+
   const goBack = () => {
     setSelectedUserType(null);
     setPassword('');
@@ -220,6 +294,9 @@ export default function LoginPage() {
     setInvitationCode('');
     setShowActivationForm(false);
     setActivationCode('');
+    setShowEmailLogin(false);
+    setEmail('');
+    setEmailPassword('');
   };
 
   return (
@@ -233,8 +310,81 @@ export default function LoginPage() {
           親子のコミュニケーションを深めるニュース共有アプリ
         </p>
 
-        {/* アクティベーションコードフォーム */}
-        {showActivationForm ? (
+        {/* メール・パスワードログインフォーム */}
+        {showEmailLogin ? (
+          <>
+            <div className="mb-6">
+              <div className="text-4xl mb-4">🔐</div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                メール・パスワードでログイン
+              </h2>
+              <p className="text-gray-600 mt-2">
+                登録済みのメールアドレスとパスワードを入力してください
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="example@email.com"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  autoFocus
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div>
+                <input
+                  type="password"
+                  value={emailPassword}
+                  onChange={(e) => setEmailPassword(e.target.value)}
+                  placeholder="パスワード"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isLoading}
+                />
+              </div>
+
+              {error && (
+                <div className="text-red-500 text-sm bg-red-50 py-2 px-4 rounded-lg">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 py-3 px-6 rounded-xl font-medium transition-colors"
+                  disabled={isLoading}
+                >
+                  戻る
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEmailLogin}
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white py-3 px-6 rounded-xl font-medium transition-colors disabled:opacity-50"
+                  disabled={isLoading || !email.trim() || !emailPassword.trim()}
+                >
+                  {isLoading ? '処理中...' : 'ログイン'}
+                </button>
+              </div>
+
+              <div className="mt-4 text-sm text-gray-600">
+                アカウントをお持ちでない方は
+                <button
+                  onClick={() => router.push('/signup')}
+                  className="text-blue-600 hover:text-blue-700 font-medium ml-1"
+                >
+                  新規登録
+                </button>
+              </div>
+            </div>
+          </>
+        ) : /* アクティベーションコードフォーム */
+        showActivationForm ? (
           <>
             <div className="mb-6">
               <div className="text-4xl mb-4">🔑</div>
@@ -379,6 +529,17 @@ export default function LoginPage() {
                 </div>
               </button>
               
+              {/* メール・パスワードログイン */}
+              <button
+                onClick={() => setShowEmailLogin(true)}
+                className="w-full bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white px-8 py-4 rounded-2xl font-bold text-xl transition-all duration-300 shadow-lg transform hover:scale-105"
+              >
+                <div className="flex items-center justify-center space-x-3">
+                  <span className="text-2xl">🔐</span>
+                  <span>メール・パスワードでログイン</span>
+                </div>
+              </button>
+
               {/* 招待コード入力 */}
               <button
                 onClick={() => setShowInvitationForm(true)}

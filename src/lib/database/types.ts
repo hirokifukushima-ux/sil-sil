@@ -56,9 +56,11 @@ export interface Invitation {
   parentId?: string;
   status: 'pending' | 'accepted' | 'expired';
   code: string; // 招待コード
+  type: 'public' | 'private'; // public: 再利用可能, private: 1回限り
   expiresAt: string;
   createdAt: string;
   acceptedUserId?: string; // この招待を受け入れたユーザーのID
+  acceptedAt?: string; // 受け入れ日時
 }
 
 export interface ArticleReaction {
@@ -131,16 +133,18 @@ export interface DatabaseProvider {
   
   // 招待機能
   createInvitation(invitation: Omit<Invitation, 'id' | 'createdAt' | 'code'>): Promise<Invitation>;
-  
+
   getInvitation(code: string): Promise<Invitation | null>;
-  
+
   getInvitations(filters?: {
     inviterId?: string;
     status?: 'pending' | 'accepted' | 'expired';
   }): Promise<Invitation[]>;
-  
+
+  updateInvitation(id: string, updates: Partial<Invitation>): Promise<Invitation | null>;
+
   acceptInvitation(code: string, userId: string): Promise<boolean>;
-  
+
   expireInvitation(code: string): Promise<boolean>;
   
   // リアクション操作

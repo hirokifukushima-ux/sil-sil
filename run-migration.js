@@ -8,75 +8,85 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cC
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function runMigration() {
-  console.log('マイグレーションを実行中...');
+  console.log('🚀 マイグレーションを実行中...');
+  console.log('📝 Task: Add type column to invitations table\n');
 
   try {
-    // 1. カラムを追加
-    console.log('1. accepted_user_id カラムを追加中...');
-    const { error: alterError } = await supabase.rpc('exec_sql', {
-      sql: 'ALTER TABLE invitations ADD COLUMN IF NOT EXISTS accepted_user_id TEXT REFERENCES users(id);'
-    });
+    // 1. type カラムを追加
+    console.log('1. type カラムを追加中...');
 
-    if (alterError && !alterError.message.includes('already exists')) {
-      console.error('カラム追加エラー:', alterError);
-      // 続行する
-    } else {
-      console.log('✓ カラム追加完了');
-    }
-
-    // 2. 既存データを更新
-    console.log('2. 既存の accepted 状態の招待コードを更新中...');
-    const { error: updateError } = await supabase.rpc('exec_sql', {
-      sql: `
-        UPDATE invitations i
-        SET accepted_user_id = (
-          SELECT u.id
-          FROM users u
-          WHERE u.created_by = i.inviter_id
-            AND u.user_type = i.target_type
-            AND (u.email = i.email OR u.email IS NULL OR i.email IS NULL)
-          ORDER BY u.created_at ASC
-          LIMIT 1
-        )
-        WHERE i.status = 'accepted'
-          AND i.accepted_user_id IS NULL;
-      `
-    });
-
-    if (updateError && !updateError.message.includes('does not exist')) {
-      console.error('データ更新エラー:', updateError);
-      // 続行する
-    } else {
-      console.log('✓ 既存データ更新完了');
-    }
-
-    // 3. インデックスを追加
-    console.log('3. インデックスを追加中...');
-    const { error: indexError } = await supabase.rpc('exec_sql', {
-      sql: 'CREATE INDEX IF NOT EXISTS idx_invitations_accepted_user_id ON invitations(accepted_user_id);'
-    });
-
-    if (indexError && !indexError.message.includes('already exists')) {
-      console.error('インデックス追加エラー:', indexError);
-      // 続行する
-    } else {
-      console.log('✓ インデックス追加完了');
-    }
-
-    // 4. 確認クエリ
-    console.log('\n4. 結果を確認中...');
-    const { data, error: selectError } = await supabase
+    // Supabase doesn't support ALTER TABLE via RPC, so we use direct table operations
+    // First, check if column exists by trying to select it
+    const { error: checkError } = await supabase
       .from('invitations')
-      .select('code, email, target_type, status, accepted_user_id')
-      .eq('status', 'accepted')
-      .order('created_at', { ascending: false });
+      .select('type')
+      .limit(1);
+
+    if (checkError && checkError.message.includes('column "type" does not exist')) {
+      console.log('⚠️  type カラムが存在しません。Supabase Dashboardで手動追加が必要です。');
+      console.log('\n📋 実行するSQL:');
+      console.log('ALTER TABLE invitations ADD COLUMN type TEXT DEFAULT \'private\' CHECK (type IN (\'public\', \'private\'));');
+      console.log('\n');
+    } else if (!checkError) {
+      console.log('✅ type カラムは既に存在します');
+    } else {
+      console.error('❌ カラム確認エラー:', checkError);
+    }
+
+    // 2. 'teleport' コードを type='public' に更新
+    console.log('\n2. \'teleport\' コードを type=\'public\' に更新中...');
+
+    const { data: teleportBefore, error: beforeError } = await supabase
+      .from('invitations')
+      .select('code, type, status')
+      .eq('code', 'teleport')
+      .single();
+
+    if (beforeError) {
+      console.error('❌ teleport 確認エラー:', beforeError.message);
+    } else {
+      console.log('📋 更新前:', teleportBefore);
+    }
+
+    const { error: updateError } = await supabase
+      .from('invitations')
+      .update({ type: 'public' })
+      .eq('code', 'teleport');
+
+    if (updateError) {
+      console.error('❌ teleport 更新エラー:', updateError.message);
+      if (updateError.message.includes('column "type" does not exist')) {
+        console.log('⚠️  先にSupabase DashboardでSQL Editorから以下を実行してください:');
+        console.log('   ALTER TABLE invitations ADD COLUMN type TEXT DEFAULT \'private\';');
+      }
+    } else {
+      console.log('✅ teleport 更新完了');
+
+      const { data: teleportAfter } = await supabase
+        .from('invitations')
+        .select('code, type, status')
+        .eq('code', 'teleport')
+        .single();
+
+      if (teleportAfter) {
+        console.log('📋 更新後:', teleportAfter);
+      }
+    }
+
+    // 3. 全ての招待コードを確認
+    console.log('\n3. 全招待コードの確認...');
+    const { data: allInvitations, error: selectError } = await supabase
+      .from('invitations')
+      .select('code, type, status')
+      .order('created_at', { ascending: false })
+      .limit(10);
 
     if (selectError) {
-      console.error('確認クエリエラー:', selectError);
+      console.error('❌ 確認クエリエラー:', selectError.message);
     } else {
-      console.log('\n✓ マイグレーション完了！\n');
-      console.log('受け入れ済み招待コード一覧:');
-      console.table(data);
+      console.log('\n✅ マイグレーション完了！\n');
+      console.log('招待コード一覧（最新10件）:');
+      console.table(allInvitations);
     }
 
   } catch (error) {

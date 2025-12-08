@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
       targetType: 'parent',
       organizationId: organizationId,
       status: 'pending',
+      type: 'private', // Master作成の招待コードは1回限り
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7日後
     });
     

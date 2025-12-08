@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { clearUserType, isParentUser, getAuthSession } from "../../lib/auth";
+import { clearUserType, isParentUser, getAuthSession, syncWithSupabaseAuth } from "../../lib/auth";
+import SaveAccountBanner from "@/components/auth/SaveAccountBanner";
 
 // カテゴリ表示のヘルパー関数
 function getDisplayCategory(category: string, originalTitle?: string): string {
@@ -153,16 +154,24 @@ export default function ParentDashboard() {
     router.push(`/kids/article/${articleId}?from=parent`);
   };
 
-  // アクセス制御チェック
+  // アクセス制御チェック & Supabase Authセッション同期
   useEffect(() => {
-    console.log('🔍 親ダッシュボード：認証チェック開始');
-    if (!isParentUser()) {
-      console.log('❌ 親ダッシュボード：認証失敗、ログインページへリダイレクト');
-      router.push('/login');
-      return;
-    }
-    console.log('✅ 親ダッシュボード：認証成功');
-    setIsAuthorized(true);
+    const checkAuth = async () => {
+      console.log('🔍 親ダッシュボード：認証チェック開始');
+
+      // Supabase Authセッションと同期
+      await syncWithSupabaseAuth();
+
+      if (!isParentUser()) {
+        console.log('❌ 親ダッシュボード：認証失敗、ログインページへリダイレクト');
+        router.push('/login');
+        return;
+      }
+      console.log('✅ 親ダッシュボード：認証成功');
+      setIsAuthorized(true);
+    };
+
+    checkAuth();
   }, [router]);
 
   // 最近の記事を取得（データベース統合：子供ページと同じデータソースを使用）
@@ -642,6 +651,9 @@ export default function ParentDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* アカウント保存バナー（メールアドレス未設定の場合のみ表示） */}
+        {!getAuthSession()?.email && <SaveAccountBanner />}
+
         {/* 子供選択 */}
         <div className="bg-white rounded-lg shadow p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">子供を選択</h2>

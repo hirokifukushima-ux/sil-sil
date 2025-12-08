@@ -454,6 +454,30 @@ export class SupabaseProvider implements DatabaseProvider {
     }
   }
 
+  async updateInvitation(id: string, updates: Partial<Invitation>): Promise<Invitation | null> {
+    try {
+      const updateData = this.transformInvitationToDB(updates);
+      updateData.updated_at = new Date().toISOString();
+
+      const { data, error } = await this.client
+        .from('invitations')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') return null; // Record not found
+        throw new DatabaseError(`招待更新エラー: ${error.message}`, error.code);
+      }
+
+      return data ? this.transformInvitationFromDB(data) : null;
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('招待更新中に予期しないエラーが発生しました', undefined, error);
+    }
+  }
+
   async expireInvitation(code: string): Promise<boolean> {
     try {
       const { error } = await this.client
@@ -924,9 +948,11 @@ export class SupabaseProvider implements DatabaseProvider {
       parentId: dbInvitation.parent_id,
       status: dbInvitation.status,
       code: dbInvitation.code,
+      type: dbInvitation.type || 'private', // デフォルトはprivate
       expiresAt: dbInvitation.expires_at,
       createdAt: dbInvitation.created_at,
-      acceptedUserId: dbInvitation.accepted_user_id
+      acceptedUserId: dbInvitation.accepted_user_id,
+      acceptedAt: dbInvitation.accepted_at
     };
   }
 
@@ -942,8 +968,10 @@ export class SupabaseProvider implements DatabaseProvider {
     if (invitation.parentId !== undefined) dbInvitation.parent_id = invitation.parentId;
     if (invitation.status !== undefined) dbInvitation.status = invitation.status;
     if (invitation.code !== undefined) dbInvitation.code = invitation.code;
+    if (invitation.type !== undefined) dbInvitation.type = invitation.type;
     if (invitation.expiresAt !== undefined) dbInvitation.expires_at = invitation.expiresAt;
     if (invitation.acceptedUserId !== undefined) dbInvitation.accepted_user_id = invitation.acceptedUserId;
+    if (invitation.acceptedAt !== undefined) dbInvitation.accepted_at = invitation.acceptedAt;
 
     // 作成時の自動設定
     if (!invitation.createdAt && !dbInvitation.created_at) {

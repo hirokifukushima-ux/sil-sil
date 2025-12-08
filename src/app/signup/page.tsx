@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { setAuthSession } from "../../lib/auth";
+import { setAuthSession, clearAuthSession } from "../../lib/auth";
 
 export default function SignupPage() {
   const router = useRouter();
   const [invitationCode, setInvitationCode] = useState('');
-  const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,7 +28,7 @@ export default function SignupPage() {
     setError('');
 
     try {
-      // ユーザーが入力した招待コードを使用してアカウント作成
+      // ユーザーが入力した招待コードを使用してアカウント作成（仮アカウント）
       const response = await fetch('/api/invitations/accept', {
         method: 'POST',
         headers: {
@@ -37,7 +36,6 @@ export default function SignupPage() {
         },
         body: JSON.stringify({
           code: invitationCode.trim(),
-          email: email.trim() || `user-${Date.now()}@know-news.app`,
           displayName: displayName.trim()
         }),
       });
@@ -45,7 +43,9 @@ export default function SignupPage() {
       const result = await response.json();
 
       if (response.ok) {
-        // 成功 - 親アカウントとしてログイン
+        // 成功 - 古いセッションをクリアしてから親アカウントとしてログイン
+        clearAuthSession();
+
         setAuthSession({
           userId: result.user.id,
           userType: 'parent',
@@ -116,23 +116,8 @@ export default function SignupPage() {
                 disabled={isLoading}
                 maxLength={50}
               />
-            </div>
-
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                メールアドレス <span className="text-gray-400 text-xs">(任意)</span>
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="例: tanaka@example.com"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                disabled={isLoading}
-              />
               <p className="mt-1 text-xs text-gray-500">
-                メールアドレスは後から設定することもできます
+                メールアドレス・パスワードは後で設定できます
               </p>
             </div>
           </div>
@@ -170,7 +155,8 @@ export default function SignupPage() {
         </div>
 
         <div className="mt-6 text-xs text-gray-400">
-          アカウント作成後、お子さま用のアカウントを作成できます
+          まずは気軽に体験してみましょう！<br />
+          後でメールアドレスとパスワードを設定すると、次回から簡単にログインできます
         </div>
       </div>
     </div>

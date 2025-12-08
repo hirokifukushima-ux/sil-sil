@@ -222,3 +222,57 @@ export const refreshSession = () => {
     });
   }
 };
+
+// Supabase Authセッションと同期
+export const syncWithSupabaseAuth = async () => {
+  try {
+    // 動的importでSupabaseクライアントを読み込み（クライアントサイドのみ）
+    if (typeof window === 'undefined') return;
+
+    const { supabase } = await import('./supabase/client');
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (session && session.user) {
+      // Supabase Authにセッションがある場合、ローカルセッションを更新
+      const userId = session.user.user_metadata?.user_id;
+      const displayName = session.user.user_metadata?.display_name;
+
+      if (userId) {
+        // 既存のローカルセッション情報と統合
+        const localSession = getAuthSession();
+
+        if (!localSession || localSession.userId !== userId) {
+          // Supabase Authのセッションが優先
+          console.log('🔄 Supabase Authセッションと同期中...');
+
+          // ユーザー情報を取得
+          const { getDatabase } = await import('./database');
+          const db = getDatabase();
+          const user = await db.getUser(userId);
+
+          if (user) {
+            setAuthSession({
+              userId: user.id,
+              userType: user.userType,
+              email: user.email || session.user.email || '',
+              displayName: user.displayName || displayName,
+              parentId: user.parentId,
+              masterId: user.masterId,
+              organizationId: user.organizationId
+            });
+          }
+        }
+      }
+    } else {
+      // Supabase Authにセッションがない場合
+      const localSession = getAuthSession();
+      if (localSession?.email) {
+        // メールアドレスがある場合のみSupabaseセッションが必要
+        // （仮アカウントはメールアドレスがないので問題なし）
+        console.log('⚠️ Supabase Authセッションが見つかりません');
+      }
+    }
+  } catch (error) {
+    console.error('Supabase Authセッション同期エラー:', error);
+  }
+};
