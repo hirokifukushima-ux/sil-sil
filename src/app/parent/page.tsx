@@ -95,6 +95,7 @@ export default function ParentDashboard() {
   const [selectedArticles, setSelectedArticles] = useState<number[]>([]);
   const [isArchiveMode, setIsArchiveMode] = useState(false);
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);
+  const [parentName, setParentName] = useState<string>('');
 
   // 子どものデータ
   const [children, setChildren] = useState<Array<{
@@ -276,6 +277,15 @@ export default function ParentDashboard() {
     };
 
     fetchChildren();
+  }, [isAuthorized]);
+
+  // 親の名前を取得
+  useEffect(() => {
+    if (!isAuthorized) return;
+    const session = getAuthSession();
+    if (session?.displayName) {
+      setParentName(session.displayName);
+    }
   }, [isAuthorized]);
 
   // 子供の質問を取得
@@ -627,26 +637,32 @@ export default function ParentDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10 shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          {/* 1段目：ロゴと親の名前 */}
+          <div className="flex items-center justify-between py-3 border-b border-gray-100">
             <Link href="/parent" className="flex items-center">
-              <span className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-baseline" key="parent-logo">
+              <span className="text-xl lg:text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-baseline">
                 🏠 シルシル
-                <span className="text-sm font-normal text-gray-500 ml-1" key="parent-suffix">for parent</span>
+                <span className="text-xs lg:text-sm font-normal text-gray-500 ml-1">for parent</span>
               </span>
             </Link>
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-600">
-                親ダッシュボード
-              </div>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-500 hover:text-red-600 transition-colors"
-              >
-                ログアウト
-              </button>
+            <div className="text-sm lg:text-base text-gray-700 font-medium">
+              👤 {parentName || 'ゲスト'} さん
             </div>
+          </div>
+
+          {/* 2段目：ダッシュボードとログアウト */}
+          <div className="flex items-center justify-between py-2">
+            <div className="text-xs lg:text-sm text-gray-600">
+              親ダッシュボード
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-xs lg:text-sm text-gray-500 hover:text-red-600 transition-colors"
+            >
+              ログアウト
+            </button>
           </div>
         </div>
       </header>
