@@ -672,26 +672,13 @@ export default function KidsNews() {
                   {article.summary}
                 </p>
                 
-                {/* リアクション表示 */}
-                {article.reactions && article.reactions.length > 0 && (
-                  <div className="mb-4 flex items-center space-x-2">
-                    <span className="text-sm text-gray-500">きみのリアクション:</span>
-                    {article.reactions.map((reaction: string, index: number) => (
-                      <span key={index} className="text-sm bg-gray-100 rounded-full px-3 py-1">
-                        {reaction === 'good' ? '👍 わかった' : 
-                         reaction === 'fun' ? '😄 たのしい' :
-                         reaction === 'difficult' ? '🤔 むずかしい' :
-                         reaction === 'question' ? '❓ しつもん' : reaction}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
+                {/* 読んでみるボタンとリアクション表示 */}
+                <div className="flex items-center justify-between gap-3">
+                  {/* 読んでみるボタン */}
                   <button
                     onClick={() => handleReadArticle(article.id)}
-                    className={`px-8 py-4 rounded-full font-bold text-lg transition-all duration-300 shadow-lg transform hover:scale-105 ${
-                      article.hasRead 
+                    className={`flex-1 max-w-xs px-6 py-3 sm:px-8 sm:py-4 rounded-full font-bold text-base sm:text-lg transition-all duration-300 shadow-lg transform hover:scale-105 active:scale-95 ${
+                      article.hasRead
                         ? 'bg-gradient-to-r from-green-400 to-green-600 text-white hover:from-green-500 hover:to-green-700'
                         : 'bg-gradient-to-r from-blue-400 to-purple-500 text-white hover:from-blue-500 hover:to-purple-600'
                     }`}
@@ -699,52 +686,30 @@ export default function KidsNews() {
                     {article.hasRead ? 'もういちど よむ 📖' : 'よんでみる！ 📖'}
                   </button>
 
-                  <div className="flex space-x-3">
-                    <button
-                      onClick={() => handleReaction(article.id, 'good')}
-                      className={`p-3 rounded-full transition-colors border-2 transform ${
-                        article.reactions?.includes('good')
-                          ? 'bg-green-500 text-white border-green-600 scale-110 shadow-lg'
-                          : 'bg-green-100 hover:bg-green-200 border-transparent hover:scale-105'
-                      }`}
-                      title="わかった！"
-                    >
-                      <span className="text-2xl">👍</span>
-                    </button>
-                    <button
-                      onClick={() => handleReaction(article.id, 'fun')}
-                      className={`p-3 rounded-full transition-colors border-2 transform ${
-                        article.reactions?.includes('fun')
-                          ? 'bg-yellow-500 text-white border-yellow-600 scale-110 shadow-lg'
-                          : 'bg-yellow-100 hover:bg-yellow-200 border-transparent hover:scale-105'
-                      }`}
-                      title="たのしい！"
-                    >
-                      <span className="text-2xl">😄</span>
-                    </button>
-                    <button
-                      onClick={() => handleReaction(article.id, 'difficult')}
-                      className={`p-3 rounded-full transition-colors border-2 transform ${
-                        article.reactions?.includes('difficult')
-                          ? 'bg-orange-500 text-white border-orange-600 scale-110 shadow-lg'
-                          : 'bg-yellow-100 hover:bg-yellow-200 border-transparent hover:scale-105'
-                      }`}
-                      title="むずかしい"
-                    >
-                      <span className="text-2xl">🤔</span>
-                    </button>
-                    <button
-                      onClick={() => handleReaction(article.id, 'question')}
-                      className={`p-3 rounded-full transition-colors border-2 transform ${
-                        article.reactions?.includes('question')
-                          ? 'bg-purple-500 text-white border-purple-600 scale-110 shadow-lg'
-                          : 'bg-purple-100 hover:bg-purple-200 border-transparent hover:scale-105'
-                      }`}
-                      title="しつもん したい"
-                    >
-                      <span className="text-2xl">❓</span>
-                    </button>
-                  </div>
+                  {/* リアクション済みアイコン表示（小さく） */}
+                  {article.reactions && article.reactions.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      {article.reactions.map((reaction: string, index: number) => (
+                        <span
+                          key={index}
+                          className="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-full flex items-center justify-center shadow-md border-2 border-gray-100"
+                          title={
+                            reaction === 'good' ? 'わかった' :
+                            reaction === 'fun' ? 'たのしい' :
+                            reaction === 'difficult' ? 'むずかしい' :
+                            reaction === 'question' ? 'しつもん' : reaction
+                          }
+                        >
+                          <span className="text-xl sm:text-2xl">
+                            {reaction === 'good' ? '👍' :
+                             reaction === 'fun' ? '😄' :
+                             reaction === 'difficult' ? '🤔' :
+                             reaction === 'question' ? '❓' : reaction}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
