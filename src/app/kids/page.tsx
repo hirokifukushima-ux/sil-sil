@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearUserType, requireAuth } from "../../lib/auth";
+import FuriganaText from "@/components/FuriganaText";
 
 // カテゴリ表示のヘルパー関数
 function getDisplayCategory(category: string, originalTitle?: string): string {
@@ -53,6 +54,7 @@ export default function KidsNews() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [childName, setChildName] = useState<string>('お子さま');
+  const [showFurigana, setShowFurigana] = useState(true);
 
   // アクセス制御チェック
   useEffect(() => {
@@ -481,36 +483,42 @@ export default function KidsNews() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-200">
-      {/* ヘッダー */}
-      <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+      {/* ヘッダー - 2段レイアウト */}
+      <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4">
+          {/* 1段目：ロゴと子供の名前 */}
+          <div className="flex items-center justify-between py-3 border-b border-gray-100">
             <Link href="/kids" className="flex items-center space-x-2">
               <span className="text-2xl">🏠</span>
-              <span className="text-xl font-bold text-purple-600 flex items-baseline" key="kids-logo">
+              <span className="text-lg sm:text-xl font-bold text-purple-600 flex items-baseline" key="kids-logo">
                 シルシル
                 <span className="text-xs font-normal text-gray-400 ml-1" key="kids-suffix">for kids</span>
               </span>
             </Link>
-            <div className="flex items-center space-x-4">
-              {/* しつもん機能 - 現在未使用のため非表示 */}
-              {/* <Link href="/kids/questions" className="flex items-center space-x-2 bg-pink-100 hover:bg-pink-200 px-4 py-2 rounded-full transition-colors">
-                <span className="text-lg">❓</span>
-                <span className="text-sm font-medium text-pink-600">しつもん</span>
-              </Link> */}
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">🧒</span>
-                  <span className="text-sm font-medium text-gray-600">{childName} さん</span>
-                </div>
-                {/* もどるボタン - 子供は自分のページで完結するため不要 */}
-                {/* <button
-                  onClick={handleLogout}
-                  className="text-sm text-gray-500 hover:text-red-600 transition-colors"
-                >
-                  もどる
-                </button> */}
-              </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">🧒</span>
+              <span className="text-sm font-medium text-gray-600">{childName} さん</span>
+            </div>
+          </div>
+
+          {/* 2段目：ふりがなトグル */}
+          <div className="flex items-center justify-end py-2">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-medium text-gray-600">ふりがな</span>
+              <button
+                onClick={() => setShowFurigana(!showFurigana)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  showFurigana ? 'bg-blue-500' : 'bg-gray-300'
+                }`}
+                role="switch"
+                aria-checked={showFurigana}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showFurigana ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
           </div>
         </div>
@@ -659,17 +667,23 @@ export default function KidsNews() {
                   </div>
                 </div>
 
-                <h3 
+                <h3
                   className={`text-xl font-bold mb-3 leading-relaxed cursor-pointer hover:opacity-80 transition-opacity ${
                     article.hasRead ? 'text-green-700' : 'text-gray-800'
                   }`}
                   onClick={() => handleReadArticle(article.id)}
                 >
-                  {article.title}
+                  <FuriganaText
+                    text={article.title}
+                    showFurigana={showFurigana}
+                  />
                 </h3>
 
                 <p className="text-gray-600 mb-4 leading-relaxed text-lg">
-                  {article.summary}
+                  <FuriganaText
+                    text={article.summary}
+                    showFurigana={showFurigana}
+                  />
                 </p>
                 
                 {/* 読んでみるボタンとリアクション表示 */}

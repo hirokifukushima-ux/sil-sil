@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import FuriganaText from "@/components/FuriganaText";
 
 // カテゴリ表示のヘルパー関数
 function getDisplayCategory(category: string, title?: string): string {
@@ -41,7 +42,6 @@ interface Article {
 export default function ArticleDetail({ params }: { params: Promise<{ id: string }> }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fontSize, setFontSize] = useState(18);
   const [showFurigana, setShowFurigana] = useState(true);
   const [articleId, setArticleId] = useState<string>('');
   const [userReactions, setUserReactions] = useState<string[]>([]);
@@ -464,48 +464,45 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-200 via-pink-200 to-purple-200">
-      {/* ヘッダー */}
-      <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Link href={getBackUrl()} className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition-colors">
-                <span className="text-2xl">←</span>
-                <span className="font-bold">もどる</span>
-              </Link>
-              <Link href={getBackUrl()} className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
-                <span className="text-2xl">🏠</span>
-                <span className="font-bold text-xl">シルシル</span>
-              </Link>
+      {/* ヘッダー - 2段レイアウト */}
+      <header className="bg-white/90 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4">
+          {/* 1段目：ロゴと子供の名前 */}
+          <div className="flex items-center justify-between py-3 border-b border-gray-100">
+            <Link href={getBackUrl()} className="flex items-center space-x-2 text-purple-600 hover:text-purple-800 transition-colors">
+              <span className="text-2xl">🏠</span>
+              <span className="font-bold text-lg sm:text-xl">シルシル</span>
+            </Link>
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">🧒</span>
+              <span className="text-sm font-medium text-gray-600">{childName} さん</span>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">🧒</span>
-                <span className="text-sm font-medium text-gray-600">{childName} さん</span>
-              </div>
+          </div>
+
+          {/* 2段目：戻るボタンとふりがなトグル */}
+          <div className="flex items-center justify-between py-2">
+            <Link href={getBackUrl()} className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 transition-colors">
+              <span className="text-xl">←</span>
+              <span className="font-bold text-sm">もどる</span>
+            </Link>
+
+            {/* トグルスイッチ */}
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-medium text-gray-600">ふりがな</span>
               <button
                 onClick={() => setShowFurigana(!showFurigana)}
-                className={`px-4 py-2 rounded-full font-medium transition-colors ${
-                  showFurigana ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  showFurigana ? 'bg-blue-500' : 'bg-gray-300'
                 }`}
+                role="switch"
+                aria-checked={showFurigana}
               >
-                ふりがな
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showFurigana ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
               </button>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setFontSize(Math.max(14, fontSize - 2))}
-                  className="bg-gray-200 hover:bg-gray-300 p-2 rounded-full transition-colors"
-                >
-                  A-
-                </button>
-                <span className="text-sm font-medium">{fontSize}px</span>
-                <button
-                  onClick={() => setFontSize(Math.min(24, fontSize + 2))}
-                  className="bg-gray-200 hover:bg-gray-300 p-2 rounded-full transition-colors"
-                >
-                  A+
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -514,31 +511,59 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* 記事ヘッダー */}
         <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 mb-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <span className={`${getCategoryColor(article.category)} text-white px-4 py-2 rounded-full font-medium flex items-center`}>
-                <span className="text-lg mr-2">{getCategoryEmoji(article.category)}</span>
-                {article.category}
+          {/* タイトル */}
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
+            <FuriganaText
+              text={article.convertedTitle}
+              showFurigana={showFurigana}
+            />
+          </h1>
+
+          {/* 日付 */}
+          <div className="text-sm text-gray-500 mb-4">
+            {new Date(article.createdAt).toLocaleDateString('ja-JP', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })}
+          </div>
+
+          {/* ブログスタイルのタグ */}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            {/* カテゴリタグ */}
+            <span className={`${getCategoryColor(article.category)} text-white px-3 py-1 rounded-full text-xs font-medium inline-flex items-center`}>
+              <span className="mr-1">{getCategoryEmoji(article.category)}</span>
+              {article.category}
+            </span>
+
+            {/* 日付タグ（きょう/きのう） */}
+            {(formatDate(article.createdAt) === 'きょう' || formatDate(article.createdAt) === 'きのう') && (
+              <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-medium">
+                {formatDate(article.createdAt)}
               </span>
-              <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                📅 {formatDate(article.createdAt)}
+            )}
+
+            {/* 既読バッジ */}
+            {article.hasRead ? (
+              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium inline-flex items-center">
+                <span className="mr-1">✓</span>
+                よんだ
               </span>
-            </div>
-            {!article.hasRead && (
+            ) : (
               <button
                 onClick={handleMarkAsRead}
-                className="bg-green-500 text-white px-4 py-2 rounded-full font-medium hover:bg-green-600 transition-colors"
+                className="bg-gray-100 hover:bg-green-100 text-gray-600 hover:text-green-700 px-3 py-1 rounded-full text-xs font-medium transition-colors"
               >
                 よんだ！
               </button>
             )}
           </div>
-          
+
           {/* メイン画像 */}
           {article.image && (
-            <div className="mb-6 rounded-2xl overflow-hidden shadow-lg">
-              <img 
-                src={article.image} 
+            <div className="rounded-2xl overflow-hidden shadow-lg">
+              <img
+                src={article.image}
                 alt={article.convertedTitle}
                 className="w-full h-64 object-cover"
                 onError={(e) => {
@@ -547,29 +572,17 @@ export default function ArticleDetail({ params }: { params: Promise<{ id: string
               />
             </div>
           )}
-          
-          <h1 className="text-3xl font-bold text-gray-800 mb-4" style={{ fontSize: fontSize + 8 }}>
-            {article.convertedTitle}
-          </h1>
-          
-          <div className="text-gray-600 mb-4">
-            <span className="text-lg mr-2">📅</span>
-            {new Date(article.createdAt).toLocaleDateString('ja-JP')}
-          </div>
         </div>
 
         {/* 記事本文 */}
-        <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-8 mb-6 shadow-lg">
-          <div 
-            className="text-gray-800 leading-relaxed"
-            style={{ 
-              fontSize: fontSize,
-              lineHeight: fontSize * 0.08 + 1.4 
-            }}
-          >
+        <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 sm:p-8 mb-6 shadow-lg">
+          <div className="text-base sm:text-lg text-gray-800 leading-relaxed">
             {article.convertedContent.split('\n').map((paragraph, index) => (
               <p key={index} className={paragraph.trim() ? 'mb-6' : 'mb-3'}>
-                {paragraph}
+                <FuriganaText
+                  text={paragraph}
+                  showFurigana={showFurigana}
+                />
               </p>
             ))}
           </div>
