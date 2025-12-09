@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearUserType, isParentUser, getAuthSession, syncWithSupabaseAuth } from "../../lib/auth";
 import SaveAccountBanner from "@/components/auth/SaveAccountBanner";
+import BottomNav from "@/components/navigation/BottomNav";
 
 // カテゴリ表示のヘルパー関数
 function getDisplayCategory(category: string, originalTitle?: string): string {
@@ -654,67 +655,84 @@ export default function ParentDashboard() {
         {/* アカウント保存バナー（メールアドレス未設定の場合のみ表示） */}
         {!getAuthSession()?.email && <SaveAccountBanner />}
 
-        {/* 子供選択 */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        {/* 子供選択 - 横スクロールカルーセル */}
+        <div className="bg-white rounded-lg shadow p-4 lg:p-6 mb-4 lg:mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">子供を選択</h2>
-          <div className="flex space-x-4">
-            {children.map((child) => (
-              <div key={child.id} className="relative">
-                <button
-                  onClick={() => setSelectedChild(child.id)}
-                  className={`p-4 rounded-lg border-2 transition-colors w-full ${
-                    selectedChild === child.id
-                      ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">👧</div>
-                  <div className="font-medium">{child.name}</div>
-                  {editingChild === child.id ? (
-                    <div className="text-sm mt-2" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={child.age}
-                        onChange={(e) => updateChildAge(child.id, parseInt(e.target.value))}
-                        className="px-2 py-1 border rounded text-gray-700 bg-white"
-                        autoFocus
-                        onBlur={() => setEditingChild(null)}
-                      >
-                        {Array.from({length: 10}, (_, i) => i + 6).map(age => (
-                          <option key={age} value={age}>{age}歳 ({getGradeFromAge(age)})</option>
-                        ))}
-                      </select>
+          {/* 横スクロールコンテナ */}
+          <div className="overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0">
+            <div className="flex space-x-3 lg:space-x-4 min-w-min pb-2">
+              {children.map((child) => (
+                <div key={child.id} className="relative flex-shrink-0">
+                  <button
+                    onClick={() => setSelectedChild(child.id)}
+                    className={`p-4 lg:p-6 rounded-xl border-2 transition-all duration-200 min-w-[120px] lg:min-w-[140px] ${
+                      selectedChild === child.id
+                        ? 'border-indigo-500 bg-gradient-to-br from-indigo-50 to-purple-50 shadow-md scale-105'
+                        : 'border-gray-200 hover:border-indigo-300 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="text-3xl lg:text-4xl mb-2">👧</div>
+                    <div className={`font-medium text-sm lg:text-base truncate ${
+                      selectedChild === child.id ? 'text-indigo-700' : 'text-gray-900'
+                    }`}>
+                      {child.name}
                     </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">{child.age}歳 ({child.grade})</div>
-                  )}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingChild(child.id);
-                  }}
-                  className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-sm"
-                  title="年齢を編集"
-                >
-                  ✏️
-                </button>
-              </div>
-            ))}
+                    {editingChild === child.id ? (
+                      <div className="text-sm mt-2" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={child.age}
+                          onChange={(e) => updateChildAge(child.id, parseInt(e.target.value))}
+                          className="px-2 py-1 border rounded text-gray-700 bg-white text-xs"
+                          autoFocus
+                          onBlur={() => setEditingChild(null)}
+                        >
+                          {Array.from({length: 10}, (_, i) => i + 6).map(age => (
+                            <option key={age} value={age}>{age}歳 ({getGradeFromAge(age)})</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className={`text-xs lg:text-sm mt-1 ${
+                        selectedChild === child.id ? 'text-indigo-600' : 'text-gray-500'
+                      }`}>
+                        {child.age}歳 ({child.grade})
+                      </div>
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingChild(child.id);
+                    }}
+                    className="absolute top-1 right-1 text-gray-400 hover:text-gray-600 text-sm bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm"
+                    title="年齢を編集"
+                  >
+                    ✏️
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
+          {/* スクロールインジケーター（モバイルのみ） */}
+          {children.length > 2 && (
+            <div className="flex justify-center mt-3 lg:hidden">
+              <div className="text-xs text-gray-400">← スワイプして選択 →</div>
+            </div>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* メインコンテンツ */}
           <div className="lg:col-span-2">
-            {/* 記事追加方法選択 */}
-            <div className="bg-white rounded-lg shadow p-6 mb-8">
+            {/* 記事追加方法選択 - モバイル最適化 */}
+            <div className="bg-white rounded-lg shadow p-4 lg:p-6 mb-4 lg:mb-8 lg:block hidden">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 新しい記事を共有
               </h2>
-              
-              {/* 方法選択ボタン */}
+
+              {/* 方法選択ボタン - デスクトップのみ */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <Link 
+                <Link
                   href="/parent/news"
                   className="flex items-center p-4 border-2 border-indigo-200 rounded-lg hover:border-indigo-400 transition-colors group"
                 >
@@ -728,7 +746,7 @@ export default function ParentDashboard() {
                     </p>
                   </div>
                 </Link>
-                
+
                 <div className="flex items-center p-4 border-2 border-gray-200 rounded-lg">
                   <div className="text-3xl mr-4">🔗</div>
                   <div>
@@ -740,8 +758,8 @@ export default function ParentDashboard() {
                     </p>
                   </div>
                 </div>
-                
-                <Link 
+
+                <Link
                   href="/parent/children"
                   className="flex items-center p-4 border-2 border-green-200 rounded-lg hover:border-green-400 transition-colors group"
                 >
@@ -756,7 +774,7 @@ export default function ParentDashboard() {
                   </div>
                 </Link>
               </div>
-              
+
               {/* URL入力フォーム */}
               <form onSubmit={handleSubmitArticle} className="space-y-4">
                 <div>
@@ -883,122 +901,134 @@ export default function ParentDashboard() {
                   </div>
                 )}
               </div>
-              <div className="divide-y divide-gray-200">
+              {/* カード型記事リスト - モバイル最適化 */}
+              <div className="p-3 lg:p-0 space-y-3 lg:space-y-0 lg:divide-y lg:divide-gray-200">
                 {(currentView === 'recent' ? recentArticles : archivedArticles).map((article) => (
-                  <div key={article.id} className={`p-6 transition-colors ${
-                    selectedArticles.includes(article.id) ? 'bg-blue-50' : 'hover:bg-gray-50'
-                  }`}>
-                    <div className="flex items-start space-x-4">
-                      {/* チェックボックス（アーカイブモード時のみ表示） */}
-                      {isArchiveMode && (
-                        <div className="flex-shrink-0 pt-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedArticles.includes(article.id)}
-                            onChange={() => handleArticleSelect(article.id)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                          />
-                        </div>
-                      )}
-                      
-                      {/* サムネイル画像 */}
-                      <div 
-                        className="flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleNavigateToArticle(article.id);
-                        }}
-                      >
-                        {article.image ? (
-                          <img 
-                            src={article.image} 
-                            alt={article.convertedTitle || article.originalTitle}
-                            className="w-24 h-16 object-cover rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-24 h-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center border border-gray-200 hover:from-gray-100 hover:to-gray-200 transition-colors">
-                            <span className="text-gray-400 text-lg">📰</span>
+                  <div key={article.id} className={`lg:p-6 transition-all duration-200 ${
+                    selectedArticles.includes(article.id)
+                      ? 'bg-blue-50 lg:bg-blue-50'
+                      : 'bg-white lg:bg-transparent lg:hover:bg-gray-50'
+                  } rounded-xl lg:rounded-none shadow-sm lg:shadow-none border lg:border-0 border-gray-100`}>
+                    <div className="p-4 lg:p-0">
+                      <div className="flex items-start gap-3 lg:gap-4">
+                        {/* チェックボックス（アーカイブモード時のみ） */}
+                        {isArchiveMode && (
+                          <div className="flex-shrink-0 pt-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedArticles.includes(article.id)}
+                              onChange={() => handleArticleSelect(article.id)}
+                              className="w-5 h-5 lg:w-4 lg:h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
                           </div>
                         )}
-                      </div>
-                      
-                      <div className="flex-1">
-                        <h3 
-                          className="text-lg font-medium text-gray-900 mb-2 cursor-pointer hover:text-blue-600 transition-colors"
+
+                        {/* サムネイル画像 */}
+                        <div
+                          className="flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity active:scale-95"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleNavigateToArticle(article.id);
                           }}
                         >
-                          {article.convertedTitle || article.originalTitle}
-                        </h3>
-                        {article.convertedSummary && (
-                          <p className="text-sm text-gray-600 mb-3 leading-relaxed">
-                            📝 {article.convertedSummary}
-                          </p>
-                        )}
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                            {getDisplayCategory(article.category, article.originalTitle)}
-                          </span>
-                          <span>{new Date(article.createdAt).toLocaleDateString('ja-JP')}</span>
-                          {currentView === 'archived' && article.archivedAt && (
-                            <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                              📦 {new Date(article.archivedAt).toLocaleDateString('ja-JP')}にアーカイブ
-                            </span>
-                          )}
-                          <span className={`px-2 py-1 rounded ${
-                            article.status === 'completed'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {article.status === 'completed' ? '変換完了' : '処理中'}
-                          </span>
-                          {article.siteName && (
-                            <span className="text-gray-400">
-                              from {article.siteName}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-3 flex items-center space-x-4">
-                          {children.map((child) => (
-                            <div key={child.id} className="flex items-center text-sm">
-                              <span className="text-gray-600 mr-2">{child.name}:</span>
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                article.hasRead
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {article.hasRead ? '読了' : '未読'}
-                              </span>
+                          {article.image ? (
+                            <img
+                              src={article.image}
+                              alt={article.convertedTitle || article.originalTitle}
+                              className="w-20 h-20 lg:w-24 lg:h-16 object-cover rounded-lg shadow-sm border border-gray-200"
+                            />
+                          ) : (
+                            <div className="w-20 h-20 lg:w-24 lg:h-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
+                              <span className="text-gray-400 text-2xl lg:text-lg">📰</span>
                             </div>
-                          ))}
+                          )}
                         </div>
-                        {article.reactions && article.reactions.length > 0 && (
-                          <div className="mt-2 flex items-center space-x-2">
-                            <span className="text-sm text-gray-500">リアクション:</span>
-                            {article.reactions.map((reaction: string, index: number) => (
-                              <span key={index} className="text-sm bg-purple-100 text-purple-700 px-2 py-1 rounded">
-                                {reaction === 'good' ? '👍 わかった' : 
-                                 reaction === 'difficult' ? '🤔 むずかしい' :
-                                 reaction === 'question' ? '❓ しつもん' : reaction}
+
+                        <div className="flex-1 min-w-0">
+                          <h3
+                            className="text-base lg:text-lg font-semibold text-gray-900 mb-1.5 lg:mb-2 cursor-pointer hover:text-blue-600 transition-colors line-clamp-2 active:text-blue-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNavigateToArticle(article.id);
+                            }}
+                          >
+                            {article.convertedTitle || article.originalTitle}
+                          </h3>
+
+                          {article.convertedSummary && (
+                            <p className="text-xs lg:text-sm text-gray-600 mb-2 lg:mb-3 leading-relaxed line-clamp-2 lg:line-clamp-none">
+                              📝 {article.convertedSummary}
+                            </p>
+                          )}
+
+                          {/* メタ情報 - モバイル最適化 */}
+                          <div className="flex flex-wrap items-center gap-2 text-xs lg:text-sm">
+                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 lg:py-1 rounded-md font-medium">
+                              {getDisplayCategory(article.category, article.originalTitle)}
+                            </span>
+                            <span className="text-gray-500">
+                              {new Date(article.createdAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                            </span>
+                            {currentView === 'archived' && article.archivedAt && (
+                              <span className="bg-orange-100 text-orange-800 px-2 py-0.5 lg:py-1 rounded-md text-xs">
+                                📦 アーカイブ済み
                               </span>
-                            ))}
+                            )}
+                            <span className={`px-2 py-0.5 lg:py-1 rounded-md text-xs ${
+                              article.status === 'completed'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {article.status === 'completed' ? '完了' : '処理中'}
+                            </span>
                           </div>
-                        )}
+
+                          {/* 読了ステータス */}
+                          {children.length > 0 && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              {children.map((child) => (
+                                <div key={child.id} className="flex items-center text-xs">
+                                  <span className="text-gray-600 mr-1">{child.name}:</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                    article.hasRead
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {article.hasRead ? '✓' : '•'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* リアクション */}
+                          {article.reactions && article.reactions.length > 0 && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {article.reactions.map((reaction: string, index: number) => (
+                                <span key={index} className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md">
+                                  {reaction === 'good' ? '👍' :
+                                   reaction === 'difficult' ? '🤔' :
+                                   reaction === 'question' ? '❓' : reaction}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="ml-4 flex space-x-2">
-                        <Link href={`/kids/article/${article.id}?from=parent`} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
-                          プレビュー
-                        </Link>
-                        <button 
-                          onClick={() => window.open(article.originalUrl, '_blank')}
-                          className="text-gray-400 hover:text-gray-600 text-sm"
+
+                      {/* アクションボタン - モバイルで下部に配置 */}
+                      <div className="mt-3 pt-3 border-t border-gray-100 lg:border-0 lg:mt-0 lg:pt-0 flex gap-2 lg:absolute lg:top-6 lg:right-6">
+                        <Link
+                          href={`/kids/article/${article.id}?from=parent`}
+                          className="flex-1 lg:flex-initial text-center lg:text-left px-4 py-2 lg:px-0 lg:py-0 bg-indigo-50 lg:bg-transparent text-indigo-600 hover:text-indigo-800 text-sm font-medium rounded-lg lg:rounded-none transition-colors"
                         >
-                          元記事
+                          📖 プレビュー
+                        </Link>
+                        <button
+                          onClick={() => window.open(article.originalUrl, '_blank')}
+                          className="flex-1 lg:flex-initial text-center lg:text-left px-4 py-2 lg:px-0 lg:py-0 bg-gray-50 lg:bg-transparent text-gray-600 hover:text-gray-800 text-sm rounded-lg lg:rounded-none transition-colors"
+                        >
+                          🔗 元記事
                         </button>
                       </div>
                     </div>
@@ -1175,6 +1205,17 @@ export default function ParentDashboard() {
           </div>
         </div>
       </div>
+
+      {/* フローティングアクションボタン - モバイルのみ */}
+      <Link
+        href="/parent/news"
+        className="lg:hidden fixed bottom-20 right-4 w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full shadow-lg flex items-center justify-center text-white text-2xl z-40 hover:shadow-xl transition-all duration-200 active:scale-95"
+      >
+        ➕
+      </Link>
+
+      {/* ボトムナビゲーション */}
+      <BottomNav />
     </div>
   );
 }
