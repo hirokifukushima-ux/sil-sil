@@ -181,6 +181,14 @@ export interface DatabaseProvider {
   
   // 接続テスト
   testConnection(): Promise<boolean>;
+
+  // トークン使用量管理
+  getUserTokenUsage(userId: string): Promise<{
+    totalTokensUsed: number;
+    tokenLimit: number;
+    tokensResetAt: Date;
+  }>;
+  updateUserTokenUsage(userId: string, tokensUsed: number): Promise<void>;
 }
 
 // フィーチャーフラグ用の設定

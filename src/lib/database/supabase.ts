@@ -990,4 +990,76 @@ export class SupabaseProvider implements DatabaseProvider {
     }
     return code;
   }
+
+  // トークン使用量管理
+  async getUserTokenUsage(userId: string): Promise<{
+    totalTokensUsed: number;
+    tokenLimit: number;
+    tokensResetAt: Date;
+  }> {
+    try {
+      const { data, error } = await this.client
+        .from('users')
+        .select('total_tokens_used, token_limit, tokens_reset_at')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        throw new DatabaseError(`トークン使用量取得エラー: ${error.message}`, error.code);
+      }
+
+      if (!data) {
+        throw new DatabaseError('ユーザーが見つかりません', 'USER_NOT_FOUND');
+      }
+
+      return {
+        totalTokensUsed: data.total_tokens_used || 0,
+        tokenLimit: data.token_limit || 50000,
+        tokensResetAt: new Date(data.tokens_reset_at)
+      };
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('トークン使用量取得に失敗しました', 'UNKNOWN');
+    }
+  }
+
+  async updateUserTokenUsage(userId: string, tokensUsed: number): Promise<void> {
+    try {
+      const { error } = await this.client
+        .from('users')
+        .update({
+          total_tokens_used: this.client.rpc('increment_tokens', { user_id: userId, tokens: tokensUsed })
+        })
+        .eq('id', userId);
+
+      if (error) {
+        // RPC関数がない場合は、直接UPDATEを試みる
+        const { data: currentData, error: fetchError } = await this.client
+          .from('users')
+          .select('total_tokens_used')
+          .eq('id', userId)
+          .single();
+
+        if (fetchError) {
+          throw new DatabaseError(`トークン使用量取得エラー: ${fetchError.message}`, fetchError.code);
+        }
+
+        const newTotal = (currentData?.total_tokens_used || 0) + tokensUsed;
+
+        const { error: updateError } = await this.client
+          .from('users')
+          .update({ total_tokens_used: newTotal })
+          .eq('id', userId);
+
+        if (updateError) {
+          throw new DatabaseError(`トークン使用量更新エラー: ${updateError.message}`, updateError.code);
+        }
+      }
+
+      console.log(`✅ ユーザー ${userId} のトークン使用量を ${tokensUsed} トークン更新しました`);
+    } catch (error) {
+      if (error instanceof DatabaseError) throw error;
+      throw new DatabaseError('トークン使用量更新に失敗しました', 'UNKNOWN');
+    }
+  }
 }

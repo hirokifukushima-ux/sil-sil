@@ -13,7 +13,8 @@ export interface ConvertedArticle {
 // 記事を子供向けに変換する関数
 async function convertToChildFriendly(
   title: string,
-  content: string
+  content: string,
+  userId?: string
 ): Promise<ConvertedArticle> {
   try {
     // OpenAI APIを使用して変換
@@ -79,7 +80,7 @@ async function convertToChildFriendly(
     const data = await response.json();
     const convertedText = data.choices[0].message.content;
 
-    // トークン使用量をログに出力
+    // トークン使用量をログに出力し、データベースを更新
     if (data.usage) {
       const { prompt_tokens, completion_tokens, total_tokens } = data.usage;
       const inputCost = (prompt_tokens / 1000000) * 0.150; // $0.150 per 1M tokens
@@ -88,6 +89,18 @@ async function convertToChildFriendly(
 
       console.log(`📊 トークン使用量: 入力=${prompt_tokens}, 出力=${completion_tokens}, 合計=${total_tokens}`);
       console.log(`💰 推定コスト: 入力=$${inputCost.toFixed(6)}, 出力=$${outputCost.toFixed(6)}, 合計=$${totalCost.toFixed(6)} (≈${(totalCost * 150).toFixed(2)}円)`);
+
+      // トークン使用量をデータベースに記録
+      if (userId) {
+        try {
+          const db = getDatabase();
+          await db.updateUserTokenUsage(userId, total_tokens);
+          console.log(`✅ ユーザー ${userId} のトークン使用量を更新: +${total_tokens} トークン`);
+        } catch (error) {
+          console.error('❌ トークン使用量更新エラー:', error);
+          // エラーが発生しても記事変換は続行
+        }
+      }
     }
 
     // レスポンスをパース
@@ -172,17 +185,40 @@ export async function POST(request: NextRequest) {
     }
     
     const { title, content, originalUrl, image, source } = await request.json();
-    
+
     if (!title || !content) {
       return NextResponse.json({
         success: false,
         error: 'タイトルと内容が必要です'
       }, { status: 400 });
     }
-    
+
+    // トークン制限をチェック
+    const db = getDatabase();
+    try {
+      const tokenUsage = await db.getUserTokenUsage(session.userId);
+      const remainingTokens = tokenUsage.tokenLimit - tokenUsage.totalTokensUsed;
+
+      console.log(`📊 トークン使用状況: ${tokenUsage.totalTokensUsed}/${tokenUsage.tokenLimit} (残り: ${remainingTokens})`);
+
+      if (tokenUsage.totalTokensUsed >= tokenUsage.tokenLimit) {
+        return NextResponse.json({
+          success: false,
+          error: 'トークン使用上限に達しました',
+          details: {
+            used: tokenUsage.totalTokensUsed,
+            limit: tokenUsage.tokenLimit,
+            resetAt: tokenUsage.tokensResetAt
+          }
+        }, { status: 429 });
+      }
+    } catch (error) {
+      console.warn('⚠️  トークン使用量チェックエラー（処理続行）:', error);
+    }
+
     console.log(`🔄 記事変換開始: ${title} (親: ${session.userId})`);
-    
-    const convertedArticle = await convertToChildFriendly(title, content);
+
+    const convertedArticle = await convertToChildFriendly(title, content, session.userId);
     
     // タイトルからカテゴリを推定
     const inferredCategory = inferCategoryFromTitle(title);
