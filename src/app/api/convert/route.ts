@@ -79,6 +79,17 @@ async function convertToChildFriendly(
     const data = await response.json();
     const convertedText = data.choices[0].message.content;
 
+    // トークン使用量をログに出力
+    if (data.usage) {
+      const { prompt_tokens, completion_tokens, total_tokens } = data.usage;
+      const inputCost = (prompt_tokens / 1000000) * 0.150; // $0.150 per 1M tokens
+      const outputCost = (completion_tokens / 1000000) * 0.600; // $0.600 per 1M tokens
+      const totalCost = inputCost + outputCost;
+
+      console.log(`📊 トークン使用量: 入力=${prompt_tokens}, 出力=${completion_tokens}, 合計=${total_tokens}`);
+      console.log(`💰 推定コスト: 入力=$${inputCost.toFixed(6)}, 出力=$${outputCost.toFixed(6)}, 合計=$${totalCost.toFixed(6)} (≈${(totalCost * 150).toFixed(2)}円)`);
+    }
+
     // レスポンスをパース
     const titleMatch = convertedText.match(/タイトル:\s*(.+?)(?:\n|$)/);
     const contentMatch = convertedText.match(/内容:\s*([\s\S]*?)(?:\n要約:|$)/);
