@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
     
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
-    const limit = limitParam ? parseInt(limitParam) : 1000;
+    // パフォーマンス最適化: デフォルト値を1000から50に変更
+    const limit = limitParam ? parseInt(limitParam) : 50;
     const includeArchived = searchParams.get('includeArchived') === 'true';
     
     // 親アカウントIDを決定（子の場合は親のIDを使用）

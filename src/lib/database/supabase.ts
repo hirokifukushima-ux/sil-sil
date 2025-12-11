@@ -36,7 +36,19 @@ export class SupabaseProvider implements DatabaseProvider {
     limit?: number;
   }): Promise<Article[]> {
     try {
-      let query = this.client.from('articles').select('*');
+      // パフォーマンス最適化: 必要なカラムのみを取得
+      let query = this.client.from('articles').select(`
+        id,
+        converted_title,
+        converted_summary,
+        category,
+        created_at,
+        image,
+        has_read,
+        is_archived,
+        parent_id,
+        child_age
+      `);
 
       if (filters?.parentId) {
         query = query.eq('parent_id', filters.parentId);
@@ -71,9 +83,24 @@ export class SupabaseProvider implements DatabaseProvider {
 
   async getArticleById(id: number): Promise<Article | null> {
     try {
+      // パフォーマンス最適化: 記事詳細に必要なカラムのみを取得
       const { data, error } = await this.client
         .from('articles')
-        .select('*')
+        .select(`
+          id,
+          converted_title,
+          converted_summary,
+          converted_content,
+          category,
+          created_at,
+          image,
+          has_read,
+          is_archived,
+          parent_id,
+          child_age,
+          original_url,
+          site_name
+        `)
         .eq('id', id)
         .single();
 
@@ -672,52 +699,49 @@ export class SupabaseProvider implements DatabaseProvider {
     };
   }> {
     try {
-      // 記事総数クエリ
+      // パフォーマンス最適化: 全てのクエリを並列実行
+
+      // 記事統計のクエリを構築
       let articlesQuery = this.client
         .from('articles')
         .select('count', { count: 'exact', head: true })
         .eq('is_archived', false);
 
-      if (filters?.parentId) {
-        articlesQuery = articlesQuery.eq('parent_id', filters.parentId);
-      }
-      if (filters?.organizationId) {
-        articlesQuery = articlesQuery.eq('organization_id', filters.organizationId);
-      }
-
-      const { count: totalArticles } = await articlesQuery;
-
-      // 既読記事数クエリ
       let readQuery = this.client
         .from('articles')
         .select('count', { count: 'exact', head: true })
         .eq('is_archived', false)
         .eq('has_read', true);
 
-      if (filters?.parentId) {
-        readQuery = readQuery.eq('parent_id', filters.parentId);
-      }
-      if (filters?.organizationId) {
-        readQuery = readQuery.eq('organization_id', filters.organizationId);
-      }
-
-      const { count: readArticles } = await readQuery;
-
-      // カテゴリ別統計クエリ
       let categoryQuery = this.client
         .from('articles')
         .select('category')
         .eq('is_archived', false);
 
+      // フィルター適用
       if (filters?.parentId) {
+        articlesQuery = articlesQuery.eq('parent_id', filters.parentId);
+        readQuery = readQuery.eq('parent_id', filters.parentId);
         categoryQuery = categoryQuery.eq('parent_id', filters.parentId);
       }
       if (filters?.organizationId) {
+        articlesQuery = articlesQuery.eq('organization_id', filters.organizationId);
+        readQuery = readQuery.eq('organization_id', filters.organizationId);
         categoryQuery = categoryQuery.eq('organization_id', filters.organizationId);
       }
 
-      const { data: categoryData } = await categoryQuery;
+      // 記事統計を並列実行
+      const [
+        { count: totalArticles },
+        { count: readArticles },
+        { data: categoryData }
+      ] = await Promise.all([
+        articlesQuery,
+        readQuery,
+        categoryQuery
+      ]);
 
+      // カテゴリ集計
       const categoryCounts: { [key: string]: number } = {};
       categoryData?.forEach((article) => {
         categoryCounts[article.category] = (categoryCounts[article.category] || 0) + 1;
@@ -733,30 +757,34 @@ export class SupabaseProvider implements DatabaseProvider {
         categoryCounts
       };
 
-      // ユーザー統計（organizationIdが指定された場合のみ）
+      // ユーザー統計（organizationIdが指定された場合のみ）- 並列実行
       if (filters?.organizationId) {
-        const { count: totalUsers } = await this.client
-          .from('users')
-          .select('count', { count: 'exact', head: true })
-          .eq('organization_id', filters.organizationId);
-
-        const { count: activeUsers } = await this.client
-          .from('users')
-          .select('count', { count: 'exact', head: true })
-          .eq('organization_id', filters.organizationId)
-          .eq('is_active', true);
-
-        const { count: parents } = await this.client
-          .from('users')
-          .select('count', { count: 'exact', head: true })
-          .eq('organization_id', filters.organizationId)
-          .eq('user_type', 'parent');
-
-        const { count: children } = await this.client
-          .from('users')
-          .select('count', { count: 'exact', head: true })
-          .eq('organization_id', filters.organizationId)
-          .eq('user_type', 'child');
+        const [
+          { count: totalUsers },
+          { count: activeUsers },
+          { count: parents },
+          { count: children }
+        ] = await Promise.all([
+          this.client
+            .from('users')
+            .select('count', { count: 'exact', head: true })
+            .eq('organization_id', filters.organizationId),
+          this.client
+            .from('users')
+            .select('count', { count: 'exact', head: true })
+            .eq('organization_id', filters.organizationId)
+            .eq('is_active', true),
+          this.client
+            .from('users')
+            .select('count', { count: 'exact', head: true })
+            .eq('organization_id', filters.organizationId)
+            .eq('user_type', 'parent'),
+          this.client
+            .from('users')
+            .select('count', { count: 'exact', head: true })
+            .eq('organization_id', filters.organizationId)
+            .eq('user_type', 'child')
+        ]);
 
         result.userCounts = {
           totalUsers: totalUsers || 0,
