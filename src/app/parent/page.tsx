@@ -97,6 +97,19 @@ export default function ParentDashboard() {
   const [isArchiveLoading, setIsArchiveLoading] = useState(false);
   const [parentName, setParentName] = useState<string>('');
 
+  // トークン使用状況
+  const [tokenUsage, setTokenUsage] = useState<{
+    totalTokensUsed: number;
+    tokenLimit: number;
+    remainingTokens: number;
+    usagePercentage: number;
+    tokensResetAt: string;
+    estimatedCost: {
+      usd: number;
+      jpy: number;
+    };
+  } | null>(null);
+
   // 子どものデータ
   const [children, setChildren] = useState<Array<{
     id: string;
@@ -288,6 +301,39 @@ export default function ParentDashboard() {
     }
   }, [isAuthorized]);
 
+  // トークン使用状況を取得
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    const fetchTokenUsage = async () => {
+      try {
+        const session = getAuthSession();
+        if (!session) return;
+
+        const response = await fetch('/api/user/token-usage', {
+          headers: {
+            'X-Auth-Session': JSON.stringify({
+              userId: session.userId,
+              userType: session.userType
+            }),
+          },
+        });
+        const result = await response.json();
+
+        if (result.success && result.tokenUsage) {
+          setTokenUsage(result.tokenUsage);
+          console.log('✅ トークン使用状況を取得:', result.tokenUsage);
+        } else {
+          console.warn('⚠️ トークン使用状況の取得に失敗しました');
+        }
+      } catch (error) {
+        console.error('❌ トークン使用状況取得エラー:', error);
+      }
+    };
+
+    fetchTokenUsage();
+  }, [isAuthorized]);
+
   // 子供の質問を取得
   useEffect(() => {
     if (!isAuthorized) return;
@@ -357,7 +403,7 @@ export default function ParentDashboard() {
       try {
         const selectedChildData = children.find(c => c.id === selectedChild);
         const childAge = selectedChildData?.age || 8;
-        
+
         const response = await fetch('/api/articles/share', {
           method: 'POST',
           headers: {
@@ -368,9 +414,9 @@ export default function ParentDashboard() {
             childAge: childAge
           }),
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok && result.success) {
           // ローカルストレージに記事を保存
           if (typeof window !== 'undefined') {
@@ -382,10 +428,10 @@ export default function ParentDashboard() {
               console.error('ローカルストレージ保存エラー:', error);
             }
           }
-          
+
           alert(`✅ 記事の変換が完了しました！\n\n変換後タイトル: ${result.article.convertedTitle}\n\n子供がニュースページで読めるようになりました！`);
           setNewArticleUrl('');
-          
+
           // 記事リストを更新
           const session = getAuthSession();
           const recentResponse = await fetch('/api/articles/recent', {
@@ -397,6 +443,18 @@ export default function ParentDashboard() {
           if (recentResult.success) {
             setRecentArticles(recentResult.articles);
             calculateStats(recentResult.articles);
+          }
+
+          // トークン使用状況を更新
+          const tokenResponse = await fetch('/api/user/token-usage', {
+            headers: {
+              'X-Auth-Session': JSON.stringify(session),
+            },
+          });
+          const tokenResult = await tokenResponse.json();
+          if (tokenResult.success && tokenResult.tokenUsage) {
+            setTokenUsage(tokenResult.tokenUsage);
+            console.log('✅ トークン使用状況を更新しました');
           }
         } else {
           throw new Error(result.error || 'サーバーエラーが発生しました');
@@ -1152,6 +1210,89 @@ export default function ParentDashboard() {
 
           {/* サイドバー */}
           <div className="space-y-8">
+            {/* トークン使用状況 */}
+            {tokenUsage && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  🎫 トークン使用状況
+                </h3>
+                <div className="space-y-4">
+                  {/* 使用量と上限 */}
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm text-gray-600">使用量</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {tokenUsage.totalTokensUsed.toLocaleString()} / {tokenUsage.tokenLimit.toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* プログレスバー */}
+                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          tokenUsage.usagePercentage >= 90
+                            ? 'bg-red-500'
+                            : tokenUsage.usagePercentage >= 70
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min(tokenUsage.usagePercentage, 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="text-xs text-gray-500 mt-1 text-right">
+                      {tokenUsage.usagePercentage}% 使用中
+                    </div>
+                  </div>
+
+                  {/* 残りトークン */}
+                  <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                    <span className="text-sm text-gray-600">残り</span>
+                    <span className={`text-lg font-bold ${
+                      tokenUsage.remainingTokens < 5000
+                        ? 'text-red-600'
+                        : tokenUsage.remainingTokens < 15000
+                        ? 'text-yellow-600'
+                        : 'text-green-600'
+                    }`}>
+                      {tokenUsage.remainingTokens.toLocaleString()}
+                    </span>
+                  </div>
+
+                  {/* 推定コスト */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">推定コスト</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      ¥{tokenUsage.estimatedCost.jpy.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* リセット日時 */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <div className="text-xs text-gray-500">
+                      次回リセット: {new Date(tokenUsage.tokensResetAt).toLocaleDateString('ja-JP', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 警告メッセージ */}
+                  {tokenUsage.usagePercentage >= 90 && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3">
+                      <div className="flex items-start">
+                        <span className="text-red-600 mr-2">⚠️</span>
+                        <p className="text-xs text-red-800">
+                          トークン使用量が上限に近づいています。リセット日まで記事変換ができなくなる可能性があります。
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 統計 */}
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
