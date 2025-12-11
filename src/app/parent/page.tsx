@@ -1217,58 +1217,32 @@ export default function ParentDashboard() {
                   🎫 トークン使用状況
                 </h3>
                 <div className="space-y-4">
-                  {/* 使用量と上限 */}
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-gray-600">使用量</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {tokenUsage.totalTokensUsed.toLocaleString()} / {tokenUsage.tokenLimit.toLocaleString()}
-                      </span>
+                  {/* 使用量表示 */}
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-900 mb-2">
+                      {tokenUsage.remainingTokens.toLocaleString()} / {tokenUsage.tokenLimit.toLocaleString()}
                     </div>
-
-                    {/* プログレスバー */}
-                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          tokenUsage.usagePercentage >= 90
-                            ? 'bg-red-500'
-                            : tokenUsage.usagePercentage >= 70
-                            ? 'bg-yellow-500'
-                            : 'bg-green-500'
-                        }`}
-                        style={{ width: `${Math.min(tokenUsage.usagePercentage, 100)}%` }}
-                      />
-                    </div>
-
-                    <div className="text-xs text-gray-500 mt-1 text-right">
-                      {tokenUsage.usagePercentage}% 使用中
+                    <div className="text-xs text-gray-500">
+                      残り / 上限
                     </div>
                   </div>
 
-                  {/* 残りトークン */}
-                  <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                    <span className="text-sm text-gray-600">残り</span>
-                    <span className={`text-lg font-bold ${
-                      tokenUsage.remainingTokens < 5000
-                        ? 'text-red-600'
-                        : tokenUsage.remainingTokens < 15000
-                        ? 'text-yellow-600'
-                        : 'text-green-600'
-                    }`}>
-                      {tokenUsage.remainingTokens.toLocaleString()}
-                    </span>
-                  </div>
-
-                  {/* 推定コスト */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">推定コスト</span>
-                    <span className="text-sm font-medium text-gray-900">
-                      ¥{tokenUsage.estimatedCost.jpy.toFixed(2)}
-                    </span>
+                  {/* プログレスバー */}
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        tokenUsage.usagePercentage >= 90
+                          ? 'bg-red-500'
+                          : tokenUsage.usagePercentage >= 70
+                          ? 'bg-yellow-500'
+                          : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min(tokenUsage.usagePercentage, 100)}%` }}
+                    />
                   </div>
 
                   {/* リセット日時 */}
-                  <div className="pt-3 border-t border-gray-100">
+                  <div className="text-center">
                     <div className="text-xs text-gray-500">
                       次回リセット: {new Date(tokenUsage.tokensResetAt).toLocaleDateString('ja-JP', {
                         year: 'numeric',
@@ -1280,7 +1254,7 @@ export default function ParentDashboard() {
 
                   {/* 警告メッセージ */}
                   {tokenUsage.usagePercentage >= 90 && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-3">
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                       <div className="flex items-start">
                         <span className="text-red-600 mr-2">⚠️</span>
                         <p className="text-xs text-red-800">
@@ -1343,7 +1317,7 @@ export default function ParentDashboard() {
             </div>
 
             {/* クイックアクション */}
-            <div className="bg-white rounded-lg shadow p-6">
+            {/* <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 クイックアクション
               </h3>
@@ -1358,7 +1332,7 @@ export default function ParentDashboard() {
                   📝 フィードバックを送る
                 </button>
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
