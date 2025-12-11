@@ -190,6 +190,15 @@ class DatabaseManager {
   async testConnection() {
     return this.provider.testConnection();
   }
+
+  // トークン使用量管理メソッド
+  async getUserTokenUsage(userId: string) {
+    return this.provider.getUserTokenUsage(userId);
+  }
+
+  async updateUserTokenUsage(userId: string, tokensUsed: number) {
+    return this.provider.updateUserTokenUsage(userId, tokensUsed);
+  }
 }
 
 // グローバルインスタンス（シングルトン）
