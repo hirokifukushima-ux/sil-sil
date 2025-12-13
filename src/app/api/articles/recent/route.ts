@@ -41,20 +41,20 @@ export async function GET(request: NextRequest) {
     const parentId = session.userType === 'parent' ? session.userId : session.parentId;
     
     console.log(`📊 最近の記事を取得中... (親: ${parentId}, limit: ${limit}, includeArchived: ${includeArchived})`);
-    
-    // 親アカウント毎にフィルタリングして記事を取得
+
+    // パフォーマンス最適化: 記事取得と統計取得を並列実行
     const db = getDatabase();
-    const articles = await db.getArticles({
-      parentId: parentId, // 親アカウントでフィルタリング
-      isArchived: includeArchived ? undefined : false,
-      limit
-    });
-    
-    // 統計情報も親アカウント毎に取得
-    const stats = await db.getStats({ 
-      parentId: parentId 
-    });
-    
+    const [articles, stats] = await Promise.all([
+      db.getArticles({
+        parentId: parentId, // 親アカウントでフィルタリング
+        isArchived: includeArchived ? undefined : false,
+        limit
+      }),
+      db.getStats({
+        parentId: parentId
+      })
+    ]);
+
     console.log(`✅ 取得完了: ${articles.length}件の記事`);
     
     return NextResponse.json({
