@@ -33,20 +33,23 @@ export async function GET(request: NextRequest) {
     
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
+    const childAgeParam = searchParams.get('childAge');
     // パフォーマンス最適化: デフォルト値を1000から50に変更
     const limit = limitParam ? parseInt(limitParam) : 50;
+    const childAge = childAgeParam ? parseInt(childAgeParam) : undefined;
     const includeArchived = searchParams.get('includeArchived') === 'true';
-    
+
     // 親アカウントIDを決定（子の場合は親のIDを使用）
     const parentId = session.userType === 'parent' ? session.userId : session.parentId;
     
-    console.log(`📊 最近の記事を取得中... (親: ${parentId}, limit: ${limit}, includeArchived: ${includeArchived})`);
+    console.log(`📊 最近の記事を取得中... (親: ${parentId}, childAge: ${childAge || 'all'}, limit: ${limit}, includeArchived: ${includeArchived})`);
 
     // パフォーマンス最適化: 記事取得と統計取得を並列実行
     const db = getDatabase();
     const [articles, stats] = await Promise.all([
       db.getArticles({
         parentId: parentId, // 親アカウントでフィルタリング
+        childAge: childAge, // 子どもの年齢でフィルタリング（オプション）
         isArchived: includeArchived ? undefined : false,
         limit
       }),

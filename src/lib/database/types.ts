@@ -92,6 +92,7 @@ export interface DatabaseProvider {
     limit?: number;
     parentId?: string;
     organizationId?: string;
+    childAge?: number; // 子どもの年齢でフィルタリング
   }): Promise<Article[]>;
   
   getArticleById(id: number): Promise<Article | null>;

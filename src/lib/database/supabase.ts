@@ -34,6 +34,7 @@ export class SupabaseProvider implements DatabaseProvider {
     category?: string;
     isArchived?: boolean;
     limit?: number;
+    childAge?: number;
   }): Promise<Article[]> {
     try {
       // パフォーマンス最適化: 必要なカラムのみを取得
@@ -60,6 +61,11 @@ export class SupabaseProvider implements DatabaseProvider {
 
       if (filters?.isArchived !== undefined) {
         query = query.eq('is_archived', filters.isArchived);
+      }
+
+      // 子どもの年齢でフィルタリング
+      if (filters?.childAge !== undefined) {
+        query = query.eq('child_age', filters.childAge);
       }
 
       if (filters?.limit) {

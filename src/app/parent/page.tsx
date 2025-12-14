@@ -189,32 +189,29 @@ export default function ParentDashboard() {
     checkAuth();
   }, [router]);
 
-  // 最近の記事を取得（データベース統合：子供ページと同じデータソースを使用）
+  // 最近の記事を取得（子ども選択に応じてフィルタリング）
   useEffect(() => {
     if (!isAuthorized) return;
-    
+    if (!selectedChild) return; // 子どもが選択されていない場合は何もしない
+
     const fetchRecentArticles = async () => {
       try {
-        console.log('🔄 親ページ：データベースから記事取得を開始...');
+        const selectedChildData = children.find(c => c.id === selectedChild);
+        console.log(`🔄 親ページ：${selectedChildData?.name || '選択した子ども'}の記事取得を開始...`);
 
         // 認証情報を取得
         const session = getAuthSession();
-        console.log('📋 セッション情報:', session);
-        if (!session) {
+        if (!session || !session.userId) {
           console.error('❌ 認証情報がありません');
           return;
         }
-        if (!session.userId) {
-          console.error('❌ ユーザーIDがありません。セッション:', session);
-          return;
-        }
-        console.log('✅ 認証OK - ユーザーID:', session.userId);
-        console.log('🔍 フェッチURL:', `/api/articles/recent?parentId=${session.userId}&limit=1000&includeArchived=false`);
 
-        // 子供ページと同じデータベースAPIを使用（データ整合性確保）
-        // HTTPヘッダーには日本語を含めないため、userIdとuserTypeのみ送信
-        // 修正: parentIdパラメータを追加し、HTTP header エラーを修正
-        const response = await fetch(`/api/articles/recent?parentId=${session.userId}&limit=1000&includeArchived=false`, {
+        // 選択した子どもの記事を取得
+        const childAge = selectedChildData?.age || 10;
+        const fetchUrl = `/api/articles/recent?parentId=${session.userId}&childAge=${childAge}&limit=100&includeArchived=false`;
+        console.log('🔍 フェッチURL:', fetchUrl);
+
+        const response = await fetch(fetchUrl, {
           headers: {
             'X-Auth-Session': JSON.stringify({
               userId: session.userId,
@@ -223,20 +220,21 @@ export default function ParentDashboard() {
           },
         });
         const result = await response.json();
-        
+
         if (result.success && result.articles.length > 0) {
-          // アーカイブされていない記事のみを表示
-          const activeArticles = result.articles.filter((article: {
+          // 選択した子どもの年齢に合った記事のみをフィルタリング
+          const filteredArticles = result.articles.filter((article: {
             isArchived?: boolean;
-          }) => article.isArchived !== true);
-          
-          setRecentArticles(activeArticles);
-          calculateStats(activeArticles);
-          console.log(`✅ 親ページ：データベースから${activeArticles.length}件の記事を取得完了`);
+            childAge?: number;
+          }) => article.isArchived !== true && article.childAge === childAge);
+
+          setRecentArticles(filteredArticles);
+          calculateStats(filteredArticles);
+          console.log(`✅ ${selectedChildData?.name}用の記事${filteredArticles.length}件を取得完了`);
         } else {
           console.warn('⚠️ データベースから記事を取得できませんでした');
           setRecentArticles([]);
-        calculateStats([]);
+          calculateStats([]);
         }
       } catch (error) {
         console.error('❌ 親ページ記事取得エラー:', error);
@@ -246,7 +244,7 @@ export default function ParentDashboard() {
     };
 
     fetchRecentArticles();
-  }, [isAuthorized]);
+  }, [isAuthorized, selectedChild, children]);
 
   // 子供一覧を取得
   useEffect(() => {
@@ -729,70 +727,55 @@ export default function ParentDashboard() {
         {/* アカウント保存バナー（メールアドレス未設定の場合のみ表示） */}
         {!getAuthSession()?.email && <SaveAccountBanner />}
 
-        {/* 子供選択 - 横スクロールカルーセル */}
-        <div className="bg-white rounded-lg shadow p-4 lg:p-6 mb-4 lg:mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">子供を選択</h2>
-          {/* 横スクロールコンテナ */}
-          <div className="overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0">
-            <div className="flex space-x-3 lg:space-x-4 min-w-min pb-2">
-              {children.map((child) => (
-                <div key={child.id} className="relative flex-shrink-0">
-                  <button
-                    onClick={() => setSelectedChild(child.id)}
-                    className={`p-4 lg:p-6 rounded-xl border-2 transition-all duration-200 min-w-[120px] lg:min-w-[140px] ${
-                      selectedChild === child.id
-                        ? 'border-indigo-500 bg-gradient-to-br from-indigo-50 to-purple-50 shadow-md scale-105'
-                        : 'border-gray-200 hover:border-indigo-300 hover:shadow-sm'
-                    }`}
-                  >
-                    <div className="text-3xl lg:text-4xl mb-2">👧</div>
-                    <div className={`font-medium text-sm lg:text-base truncate ${
-                      selectedChild === child.id ? 'text-indigo-700' : 'text-gray-900'
-                    }`}>
-                      {child.name}
+        {/* 子供選択 - コンパクトなタブ形式 */}
+        <div className="bg-white border-b border-gray-200 mb-6">
+          <div className="flex items-center space-x-1 overflow-x-auto px-4 lg:px-6">
+            {children.map((child) => (
+              <button
+                key={child.id}
+                onClick={() => setSelectedChild(child.id)}
+                className={`group relative px-4 py-3 flex items-center space-x-2 border-b-2 transition-all whitespace-nowrap ${
+                  selectedChild === child.id
+                    ? 'border-indigo-600 text-indigo-700'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                <span className="text-lg">👧</span>
+                <div className="flex flex-col items-start">
+                  <span className="font-medium text-sm">{child.name}</span>
+                  {editingChild === child.id ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={child.age}
+                        onChange={(e) => updateChildAge(child.id, parseInt(e.target.value))}
+                        className="px-1 py-0.5 border rounded text-gray-700 bg-white text-xs mt-0.5"
+                        autoFocus
+                        onBlur={() => setEditingChild(null)}
+                      >
+                        {Array.from({length: 10}, (_, i) => i + 6).map(age => (
+                          <option key={age} value={age}>{age}歳 ({getGradeFromAge(age)})</option>
+                        ))}
+                      </select>
                     </div>
-                    {editingChild === child.id ? (
-                      <div className="text-sm mt-2" onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={child.age}
-                          onChange={(e) => updateChildAge(child.id, parseInt(e.target.value))}
-                          className="px-2 py-1 border rounded text-gray-700 bg-white text-xs"
-                          autoFocus
-                          onBlur={() => setEditingChild(null)}
-                        >
-                          {Array.from({length: 10}, (_, i) => i + 6).map(age => (
-                            <option key={age} value={age}>{age}歳 ({getGradeFromAge(age)})</option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div className={`text-xs lg:text-sm mt-1 ${
-                        selectedChild === child.id ? 'text-indigo-600' : 'text-gray-500'
-                      }`}>
-                        {child.age}歳 ({child.grade})
-                      </div>
-                    )}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingChild(child.id);
-                    }}
-                    className="absolute top-1 right-1 text-gray-400 hover:text-gray-600 text-sm bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm"
-                    title="年齢を編集"
-                  >
-                    ✏️
-                  </button>
+                  ) : (
+                    <span className="text-xs text-gray-500">
+                      {child.age}歳 ({child.grade})
+                    </span>
+                  )}
                 </div>
-              ))}
-            </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingChild(child.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 ml-1 text-gray-400 hover:text-gray-600 text-xs transition-opacity"
+                  title="年齢を編集"
+                >
+                  ✏️
+                </button>
+              </button>
+            ))}
           </div>
-          {/* スクロールインジケーター（モバイルのみ） */}
-          {children.length > 2 && (
-            <div className="flex justify-center mt-3 lg:hidden">
-              <div className="text-xs text-gray-400">← スワイプして選択 →</div>
-            </div>
-          )}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
