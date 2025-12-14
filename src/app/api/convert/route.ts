@@ -184,13 +184,18 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
     
-    const { title, content, originalUrl, image, source, childAge } = await request.json();
+    const { title, content, originalUrl, image, source, childAge, childId } = await request.json();
 
     if (!title || !content) {
       return NextResponse.json({
         success: false,
         error: 'タイトルと内容が必要です'
       }, { status: 400 });
+    }
+
+    // childIdが指定されていない場合は警告（将来的には必須にする）
+    if (!childId) {
+      console.warn('⚠️  childIdが指定されていません。childAgeのみで記事を作成します。');
     }
 
     // トークン制限をチェック
@@ -230,6 +235,7 @@ export async function POST(request: NextRequest) {
       const savedArticle = await db.createArticle({
         originalUrl: originalUrl || '',
         childAge: childAge || 10, // 選択された子どもの年齢、なければデフォルト10歳
+        childId: childId, // 対象の子どもID（個別管理用）
         originalTitle: title,
         convertedTitle: convertedArticle.title,
         originalContent: content,

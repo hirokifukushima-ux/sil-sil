@@ -35,6 +35,7 @@ export class SupabaseProvider implements DatabaseProvider {
     isArchived?: boolean;
     limit?: number;
     childAge?: number;
+    childId?: string;
   }): Promise<Article[]> {
     try {
       // パフォーマンス最適化: 必要なカラムのみを取得
@@ -48,7 +49,8 @@ export class SupabaseProvider implements DatabaseProvider {
         has_read,
         is_archived,
         parent_id,
-        child_age
+        child_age,
+        child_id
       `);
 
       if (filters?.parentId) {
@@ -63,8 +65,11 @@ export class SupabaseProvider implements DatabaseProvider {
         query = query.eq('is_archived', filters.isArchived);
       }
 
-      // 子どもの年齢でフィルタリング
-      if (filters?.childAge !== undefined) {
+      // 子どもIDでフィルタリング（優先）
+      if (filters?.childId !== undefined) {
+        query = query.eq('child_id', filters.childId);
+      } else if (filters?.childAge !== undefined) {
+        // childIdが指定されていない場合のみ、年齢でフィルタリング（後方互換性）
         query = query.eq('child_age', filters.childAge);
       }
 
@@ -90,7 +95,7 @@ export class SupabaseProvider implements DatabaseProvider {
   async getArticleById(id: number): Promise<Article | null> {
     try {
       // パフォーマンス最適化: 記事詳細に必要なカラムのみを取得
-      const { data, error } = await this.client
+      const { data, error} = await this.client
         .from('articles')
         .select(`
           id,
@@ -104,6 +109,7 @@ export class SupabaseProvider implements DatabaseProvider {
           is_archived,
           parent_id,
           child_age,
+          child_id,
           original_url,
           site_name
         `)
@@ -812,6 +818,7 @@ export class SupabaseProvider implements DatabaseProvider {
       id: dbArticle.id,
       originalUrl: dbArticle.original_url,
       childAge: dbArticle.child_age,
+      childId: dbArticle.child_id, // 子どもID（個別管理用）
       originalTitle: dbArticle.original_title,
       convertedTitle: dbArticle.converted_title,
       originalContent: dbArticle.original_content,
@@ -835,6 +842,7 @@ export class SupabaseProvider implements DatabaseProvider {
 
     if (article.originalUrl !== undefined) dbArticle.original_url = article.originalUrl;
     if (article.childAge !== undefined) dbArticle.child_age = article.childAge;
+    if (article.childId !== undefined) dbArticle.child_id = article.childId; // 子どもID（個別管理用）
     if (article.originalTitle !== undefined) dbArticle.original_title = article.originalTitle;
     if (article.convertedTitle !== undefined) dbArticle.converted_title = article.convertedTitle;
     if (article.originalContent !== undefined) dbArticle.original_content = article.originalContent;

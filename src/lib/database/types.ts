@@ -4,6 +4,7 @@ export interface Article {
   id: number;
   originalUrl: string;
   childAge: number;
+  childId?: string; // 対象の子どもアカウントID（個別管理用）
   originalTitle: string;
   convertedTitle: string;
   originalContent: string;
@@ -92,7 +93,8 @@ export interface DatabaseProvider {
     limit?: number;
     parentId?: string;
     organizationId?: string;
-    childAge?: number; // 子どもの年齢でフィルタリング
+    childAge?: number; // 子どもの年齢でフィルタリング（後方互換性のため残す）
+    childId?: string; // 子どもIDでフィルタリング（個別管理用・優先）
   }): Promise<Article[]>;
   
   getArticleById(id: number): Promise<Article | null>;

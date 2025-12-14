@@ -206,9 +206,9 @@ export default function ParentDashboard() {
           return;
         }
 
-        // 選択した子どもの記事を取得
-        const childAge = selectedChildData?.age || 10;
-        const fetchUrl = `/api/articles/recent?parentId=${session.userId}&childAge=${childAge}&limit=100&includeArchived=false`;
+        // 選択した子どもの記事を取得（childIdベースで個別管理）
+        const childId = selectedChild;
+        const fetchUrl = `/api/articles/recent?parentId=${session.userId}&childId=${childId}&limit=100&includeArchived=false`;
         console.log('🔍 フェッチURL:', fetchUrl);
 
         const response = await fetch(fetchUrl, {
@@ -222,15 +222,10 @@ export default function ParentDashboard() {
         const result = await response.json();
 
         if (result.success && result.articles.length > 0) {
-          // 選択した子どもの年齢に合った記事のみをフィルタリング
-          const filteredArticles = result.articles.filter((article: {
-            isArchived?: boolean;
-            childAge?: number;
-          }) => article.isArchived !== true && article.childAge === childAge);
-
-          setRecentArticles(filteredArticles);
-          calculateStats(filteredArticles);
-          console.log(`✅ ${selectedChildData?.name}用の記事${filteredArticles.length}件を取得完了`);
+          // APIがchildIdでフィルタリング済み、追加のフィルタリングは不要
+          setRecentArticles(result.articles);
+          calculateStats(result.articles);
+          console.log(`✅ ${selectedChildData?.name}用の記事${result.articles.length}件を取得完了`);
         } else {
           console.warn('⚠️ データベースから記事を取得できませんでした');
           setRecentArticles([]);
@@ -1044,7 +1039,7 @@ export default function ParentDashboard() {
                           {children.length > 0 && (
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               {children
-                                .filter(child => child.age === article.childAge) // 記事の対象年齢の子どものみ
+                                .filter(child => child.id === article.childId) // 記事の対象子どものみ（個別管理）
                                 .map((child) => (
                                   <div key={child.id} className="flex items-center text-xs">
                                     <span className="text-gray-600 mr-1">{child.name}:</span>

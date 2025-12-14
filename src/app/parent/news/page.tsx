@@ -791,6 +791,7 @@ export default function NewsListPage() {
         articleUrl={detailModalUrl}
         onConvert={handleConvertFromModal}
         childAge={selectedChild ? children.find(c => c.id === selectedChild)?.age : undefined}
+        childId={selectedChild || undefined}
       />
     </div>
   );
