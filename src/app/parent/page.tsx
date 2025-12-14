@@ -1040,21 +1040,23 @@ export default function ParentDashboard() {
                             </span>
                           </div>
 
-                          {/* 読了ステータス */}
+                          {/* 読了ステータス - 該当する年齢の子どものみ表示 */}
                           {children.length > 0 && (
                             <div className="mt-2 flex flex-wrap items-center gap-2">
-                              {children.map((child) => (
-                                <div key={child.id} className="flex items-center text-xs">
-                                  <span className="text-gray-600 mr-1">{child.name}:</span>
-                                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                                    article.hasRead
-                                      ? 'bg-green-100 text-green-700'
-                                      : 'bg-gray-100 text-gray-600'
-                                  }`}>
-                                    {article.hasRead ? '✓' : '•'}
-                                  </span>
-                                </div>
-                              ))}
+                              {children
+                                .filter(child => child.age === article.childAge) // 記事の対象年齢の子どものみ
+                                .map((child) => (
+                                  <div key={child.id} className="flex items-center text-xs">
+                                    <span className="text-gray-600 mr-1">{child.name}:</span>
+                                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                      article.hasRead
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-gray-100 text-gray-600'
+                                    }`}>
+                                      {article.hasRead ? '✓' : '•'}
+                                    </span>
+                                  </div>
+                                ))}
                             </div>
                           )}
 
