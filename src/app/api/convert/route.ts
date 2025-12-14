@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
     
-    const { title, content, originalUrl, image, source } = await request.json();
+    const { title, content, originalUrl, image, source, childAge } = await request.json();
 
     if (!title || !content) {
       return NextResponse.json({
@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
       
       const savedArticle = await db.createArticle({
         originalUrl: originalUrl || '',
-        childAge: 10, // デフォルト年齢
+        childAge: childAge || 10, // 選択された子どもの年齢、なければデフォルト10歳
         originalTitle: title,
         convertedTitle: convertedArticle.title,
         originalContent: content,

@@ -27,6 +27,21 @@ const categories = [
   { key: 'science', label: '科学' },
 ];
 
+// 年齢から学年を自動計算
+const getGradeFromAge = (age: number): string => {
+  if (age <= 6) return '小1';
+  if (age === 7) return '小1';
+  if (age === 8) return '小2';
+  if (age === 9) return '小3';
+  if (age === 10) return '小4';
+  if (age === 11) return '小5';
+  if (age === 12) return '小6';
+  if (age === 13) return '中1';
+  if (age === 14) return '中2';
+  if (age === 15) return '中3';
+  return `${age}歳`;
+};
+
 export default function NewsListPage() {
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -42,6 +57,15 @@ export default function NewsListPage() {
   const [convertedArticles, setConvertedArticles] = useState<{[url: string]: boolean}>({});
   const [urlMappings, setUrlMappings] = useState<{[pickupUrl: string]: string}>({});
 
+  // 子どもの選択状態
+  const [selectedChild, setSelectedChild] = useState<string | null>(null);
+  const [children, setChildren] = useState<Array<{
+    id: string;
+    name: string;
+    age: number;
+    grade: string;
+  }>>([]);
+
   // アクセス制御チェック
   useEffect(() => {
     console.log('🔍 ニュースページ：認証チェック開始');
@@ -56,6 +80,50 @@ export default function NewsListPage() {
     // ページ読み込み時に localStorage から変換済み状態を復元
     loadConvertedStateFromStorage();
   }, [router]);
+
+  // 子ども一覧を取得
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    const fetchChildren = async () => {
+      try {
+        const session = getAuthSession();
+        if (!session) return;
+
+        const response = await fetch('/api/parent/children', {
+          headers: {
+            'X-Auth-Session': JSON.stringify({
+              userId: session.userId,
+              userType: session.userType
+            }),
+          },
+        });
+        const result = await response.json();
+
+        if (result.success && result.children.length > 0) {
+          const formattedChildren = result.children.map((child: {
+            id: string;
+            displayName: string;
+            childAge: number;
+          }) => ({
+            id: child.id,
+            name: child.displayName,
+            age: child.childAge,
+            grade: getGradeFromAge(child.childAge)
+          }));
+          setChildren(formattedChildren);
+          // デフォルトで最初の子どもを選択
+          if (formattedChildren.length > 0) {
+            setSelectedChild(formattedChildren[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('子ども一覧取得エラー:', error);
+      }
+    };
+
+    fetchChildren();
+  }, [isAuthorized]);
 
   // localStorage から変換済み状態を読み込み
   const loadConvertedStateFromStorage = () => {
@@ -407,6 +475,33 @@ export default function NewsListPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 子ども選択 - コンパクトなタブ形式 */}
+        {children.length > 0 && (
+          <div className="bg-white border-b border-gray-200 mb-6 rounded-t-lg">
+            <div className="flex items-center space-x-1 overflow-x-auto px-4 lg:px-6">
+              {children.map((child) => (
+                <button
+                  key={child.id}
+                  onClick={() => setSelectedChild(child.id)}
+                  className={`group relative px-4 py-3 flex items-center space-x-2 border-b-2 transition-all whitespace-nowrap ${
+                    selectedChild === child.id
+                      ? 'border-indigo-600 text-indigo-700'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-lg">👧</span>
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium text-sm">{child.name}</span>
+                    <span className="text-xs text-gray-500">
+                      {child.age}歳 ({child.grade})
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-8">
           {/* メインコンテンツ */}
           <div className="lg:col-span-2">
@@ -695,6 +790,7 @@ export default function NewsListPage() {
         onClose={() => setIsDetailModalOpen(false)}
         articleUrl={detailModalUrl}
         onConvert={handleConvertFromModal}
+        childAge={selectedChild ? children.find(c => c.id === selectedChild)?.age : undefined}
       />
     </div>
   );

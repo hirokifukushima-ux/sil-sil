@@ -19,6 +19,7 @@ interface ArticleDetailModalProps {
   onClose: () => void;
   articleUrl: string;
   onConvert?: (articleDetail: ArticleDetail) => void;
+  childAge?: number; // 選択中の子どもの年齢
 }
 
 // マークダウン風のテキストを分析してJSX要素に変換する関数
@@ -56,11 +57,12 @@ function parseContentToJSX(content: string) {
   });
 }
 
-export default function ArticleDetailModal({ 
-  isOpen, 
-  onClose, 
-  articleUrl, 
-  onConvert 
+export default function ArticleDetailModal({
+  isOpen,
+  onClose,
+  articleUrl,
+  onConvert,
+  childAge
 }: ArticleDetailModalProps) {
   const [articleDetail, setArticleDetail] = useState<ArticleDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -144,7 +146,8 @@ export default function ArticleDetailModal({
           content: articleDetail.content,
           originalUrl: articleDetail.url,
           image: articleDetail.image,
-          source: articleDetail.source
+          source: articleDetail.source,
+          childAge: childAge // 選択中の子どもの年齢を送信
         }),
       });
       
