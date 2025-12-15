@@ -208,6 +208,7 @@ export default function ParentDashboard() {
 
         // 選択した子どもの記事を取得（childIdベースで個別管理）
         const childId = selectedChild;
+        const childAge = selectedChildData?.age;
         const fetchUrl = `/api/articles/recent?parentId=${session.userId}&childId=${childId}&limit=100&includeArchived=false`;
         console.log('🔍 フェッチURL:', fetchUrl);
 
@@ -221,11 +222,23 @@ export default function ParentDashboard() {
         });
         const result = await response.json();
 
-        if (result.success && result.articles.length > 0) {
-          // APIがchildIdでフィルタリング済み、追加のフィルタリングは不要
-          setRecentArticles(result.articles);
-          calculateStats(result.articles);
-          console.log(`✅ ${selectedChildData?.name}用の記事${result.articles.length}件を取得完了`);
+        if (result.success && result.articles) {
+          // 後方互換性: child_id=NULLの古い記事をchildAgeでフィルタリング
+          const filteredArticles = result.articles.filter((article: any) => {
+            // child_idが設定されている場合は既にフィルタリング済み
+            if (article.childId) return true;
+
+            // child_id=NULLの場合は年齢でマッチング
+            if (!article.childId && childAge !== undefined) {
+              return article.childAge === childAge;
+            }
+
+            return false;
+          });
+
+          setRecentArticles(filteredArticles);
+          calculateStats(filteredArticles);
+          console.log(`✅ ${selectedChildData?.name}用の記事${filteredArticles.length}件を取得完了（フィルタリング前: ${result.articles.length}件）`);
         } else {
           console.warn('⚠️ データベースから記事を取得できませんでした');
           setRecentArticles([]);
