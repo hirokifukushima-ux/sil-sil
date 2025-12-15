@@ -10,13 +10,120 @@ export interface ConvertedArticle {
   convertedAt: string;
 }
 
+// 年齢レベル別のシステムプロンプトを生成
+function getSystemPromptForAge(age: number): string {
+  // 基本プロンプト
+  let prompt = `あなたは優秀な教育者で、`;
+  let ageDescription = '';
+  let rules = '';
+
+  if (age <= 7) {
+    // ELI5-7: 幼児〜小学校低学年
+    ageDescription = '幼児から小学校低学年（5〜7歳）';
+    rules = `
+## 変換ルール：
+1. **語彙・表現**：
+   - とても簡単な言葉だけを使う
+   - 1つの文は短く、10文字程度まで
+   - 「〜だよ」「〜なんだ」などの親しみやすい表現
+
+2. **構造・内容**：
+   - 一番大事なこと1つだけを説明
+   - 「これはね、〜ということだよ」のように優しく説明
+   - 身近なもの（おもちゃ、食べ物、家族など）で例える
+
+3. **文章スタイル**：
+   - とても短い文章
+   - 「〜だよ・〜だね」調
+   - 楽しい気持ちになる表現`;
+  } else if (age <= 10) {
+    // ELI8-10: 小学校中学年
+    ageDescription = '小学校中学年（8〜10歳）';
+    rules = `
+## 変換ルール：
+1. **語彙・表現**：
+   - 簡単な言葉を中心に使う
+   - 難しい言葉は使わない
+   - 自然な丁寧語を使用
+
+2. **構造・内容**：
+   - 大切なポイントを2つまで説明
+   - 「なぜそうなったか」を簡単に説明
+   - 学校や日常生活の例で説明
+
+3. **文章スタイル**：
+   - 短めの文章で分かりやすく
+   - 「〜です・〜ます」調
+   - 興味を持てる表現を使用`;
+  } else if (age <= 13) {
+    // ELI11-13: 小学校高学年〜中学生
+    ageDescription = '小学校高学年から中学生（11〜13歳）';
+    rules = `
+## 変換ルール：
+1. **語彙・表現**：
+   - 難しい専門用語は簡単な言葉に置き換える
+   - 敬語は自然な丁寧語に変更
+
+2. **構造・内容**：
+   - 重要なポイントを3つ以内に整理
+   - 「なぜこれが大切なのか」を説明
+   - 身近な例で説明
+
+3. **文章スタイル**：
+   - 適度な長さの文章で分かりやすく
+   - 「〜です・〜ます」調
+   - 興味を引く表現を使用`;
+  } else {
+    // ELI14-18: 高校生レベル
+    ageDescription = '高校生（14〜18歳）';
+    rules = `
+## 変換ルール：
+1. **語彙・表現**：
+   - 専門用語も適度に使用（必要に応じて説明を追加）
+   - より正確で詳細な表現を使用
+
+2. **構造・内容**：
+   - 重要なポイントを整理して説明
+   - 背景や文脈も含めて詳しく説明
+   - 因果関係や影響を論理的に説明
+
+3. **文章スタイル**：
+   - しっかりとした文章構成
+   - 「〜です・〜ます」調または「である」調
+   - 客観的で正確な表現`;
+  }
+
+  prompt += `${ageDescription}向けにニュース記事を分かりやすく変換する専門家です。
+
+${rules}
+
+4. **避けるべき内容**：
+   - 過度に恐怖を煽る表現
+   - 年齢に不適切なコンテンツ
+
+## 出力形式：
+タイトル: [年齢に合わせた分かりやすいタイトル]
+
+内容: [変換された記事内容]
+
+要約: [3行以内の簡潔な要約]`;
+
+  return prompt;
+}
+
 // 記事を子供向けに変換する関数
 async function convertToChildFriendly(
   title: string,
   content: string,
+  targetAge: number = 12,
   userId?: string
 ): Promise<ConvertedArticle> {
   try {
+    // 年齢レベルに応じたシステムプロンプトを生成
+    const systemPrompt = getSystemPromptForAge(targetAge);
+
+    console.log(`🎯 変換対象年齢レベル: ELI${targetAge}`);
+
     // OpenAI APIを使用して変換
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -29,39 +136,11 @@ async function convertToChildFriendly(
         messages: [
           {
             role: 'system',
-            content: `あなたは優秀な教育者で、子供（小学生高学年〜中学生）向けにニュース記事を分かりやすく変換する専門家です。
-
-## 変換ルール：
-1. **語彙・表現**：
-   - 難しい専門用語は簡単な言葉に置き換える
-   - 漢字にはひらがなを併記（例：政府（せいふ））
-   - 敬語は自然な丁寧語に変更
-
-2. **構造・内容**：
-   - 重要なポイントを3つ以内に整理
-   - 「なぜこれが大切なのか」を説明
-   - 子供にとって身近な例で説明
-
-3. **文章スタイル**：
-   - 短い文章で分かりやすく
-   - 「〜です・〜ます」調
-   - 興味を引く表現を使用
-
-4. **避けるべき内容**：
-   - 過度に恐怖を煽る表現
-   - 複雑すぎる政治・経済の詳細
-   - 不適切なコンテンツ
-
-## 出力形式：
-タイトル: [子供向けの分かりやすいタイトル]
-
-内容: [変換された記事内容]
-
-要約: [3行以内の簡潔な要約]`
+            content: systemPrompt
           },
           {
             role: 'user',
-            content: `以下のニュース記事を子供向けに変換してください：
+            content: `以下のニュース記事を${targetAge}歳レベルで分かりやすく変換してください：
 
 タイトル: ${title}
 
@@ -221,9 +300,9 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️  トークン使用量チェックエラー（処理続行）:', error);
     }
 
-    console.log(`🔄 記事変換開始: ${title} (親: ${session.userId})`);
+    console.log(`🔄 記事変換開始: ${title} (親: ${session.userId}, 対象年齢レベル: ${childAge || 12})`);
 
-    const convertedArticle = await convertToChildFriendly(title, content, session.userId);
+    const convertedArticle = await convertToChildFriendly(title, content, childAge || 12, session.userId);
     
     // タイトルからカテゴリを推定
     const inferredCategory = inferCategoryFromTitle(title);
