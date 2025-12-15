@@ -41,13 +41,14 @@ export async function GET(request: NextRequest) {
     }
     
     const parentId = session.userId;
-    
+
     const db = getDatabase();
-    const children = await db.getUsers({ 
+    const children = await db.getUsers({
       userType: 'child',
-      parentId: parentId 
+      parentId: parentId,
+      isActive: true // アクティブな子アカウントのみ取得
     });
-    
+
     return NextResponse.json({
       success: true,
       children: children
