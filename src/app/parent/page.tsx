@@ -7,6 +7,16 @@ import { clearUserType, isParentUser, getAuthSession, syncWithSupabaseAuth } fro
 import SaveAccountBanner from "@/components/auth/SaveAccountBanner";
 import BottomNav from "@/components/navigation/BottomNav";
 
+// 理解度レベルの定義
+const COMPREHENSION_LEVELS = {
+  1: '超簡単・ひらがな多め',
+  2: '小学校低学年レベル',
+  3: '小学校中学年レベル',
+  4: '小学校高学年レベル',
+  5: '中学生レベル',
+  6: '高校生レベル'
+} as const;
+
 // カテゴリ表示のヘルパー関数
 function getDisplayCategory(category: string, originalTitle?: string): string {
   if (category === 'converted' && originalTitle) {
@@ -63,7 +73,6 @@ export default function ParentDashboard() {
     pendingAnswer?: string;
     articleTitle: string;
   }>>([]);
-  const [editingChild, setEditingChild] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   
   // 統計データ
@@ -139,29 +148,9 @@ export default function ParentDashboard() {
     });
   };
 
-  // 年齢から学年を自動計算
-  const getGradeFromAge = (age: number): string => {
-    if (age <= 6) return '小1';
-    if (age === 7) return '小1';
-    if (age === 8) return '小2';
-    if (age === 9) return '小3';
-    if (age === 10) return '小4';
-    if (age === 11) return '小5';
-    if (age === 12) return '小6';
-    if (age === 13) return '中1';
-    if (age === 14) return '中2';
-    if (age === 15) return '中3';
-    return `${age}歳`;
-  };
-
-  // 子どもの年齢を更新
-  const updateChildAge = (childId: string, newAge: number) => {
-    setChildren(prev => prev.map(child => 
-      child.id === childId 
-        ? { ...child, age: newAge, grade: getGradeFromAge(newAge) }
-        : child
-    ));
-    setEditingChild(null);
+  // 理解度レベルから名前を取得
+  const getComprehensionLevelName = (level: number): string => {
+    return COMPREHENSION_LEVELS[level as keyof typeof COMPREHENSION_LEVELS] || `レベル${level}`;
   };
 
   // 記事詳細ページに遷移
@@ -282,7 +271,7 @@ export default function ParentDashboard() {
             id: child.id,
             name: child.displayName,
             age: child.childAge,
-            grade: getGradeFromAge(child.childAge)
+            grade: getComprehensionLevelName(child.childAge)
           }));
           setChildren(formattedChildren);
           // デフォルトで最初の子供を選択
@@ -742,45 +731,16 @@ export default function ParentDashboard() {
               <button
                 key={child.id}
                 onClick={() => setSelectedChild(child.id)}
-                className={`group relative px-4 py-3 flex items-center space-x-2 border-b-2 transition-all whitespace-nowrap ${
+                className={`px-4 py-3 flex flex-col items-start border-b-2 transition-all whitespace-nowrap ${
                   selectedChild === child.id
                     ? 'border-indigo-600 text-indigo-700'
                     : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
                 }`}
               >
-                <span className="text-lg">👧</span>
-                <div className="flex flex-col items-start">
-                  <span className="font-medium text-sm">{child.name}</span>
-                  {editingChild === child.id ? (
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={child.age}
-                        onChange={(e) => updateChildAge(child.id, parseInt(e.target.value))}
-                        className="px-1 py-0.5 border rounded text-gray-700 bg-white text-xs mt-0.5"
-                        autoFocus
-                        onBlur={() => setEditingChild(null)}
-                      >
-                        {Array.from({length: 10}, (_, i) => i + 6).map(age => (
-                          <option key={age} value={age}>{age}歳 ({getGradeFromAge(age)})</option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-500">
-                      {child.age}歳 ({child.grade})
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingChild(child.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 ml-1 text-gray-400 hover:text-gray-600 text-xs transition-opacity"
-                  title="年齢を編集"
-                >
-                  ✏️
-                </button>
+                <span className="font-medium text-sm">{child.name}</span>
+                <span className="text-xs text-gray-500">
+                  Lv{child.age}: {child.grade}
+                </span>
               </button>
             ))}
           </div>

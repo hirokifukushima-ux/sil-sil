@@ -221,10 +221,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     
     if (childAge !== undefined) {
-      if (childAge < 3 || childAge > 18) {
+      if (childAge < 1 || childAge > 6) {
         return NextResponse.json({
           success: false,
-          error: '年齢は3歳から18歳までで入力してください'
+          error: '理解度レベルは1から6までで選択してください'
         }, { status: 400 });
       }
       updates.childAge = childAge;

@@ -99,14 +99,14 @@ export async function POST(request: NextRequest) {
     if (!displayName || !childAge) {
       return NextResponse.json({
         success: false,
-        error: '表示名と年齢は必須です'
+        error: '表示名と理解度レベルは必須です'
       }, { status: 400 });
     }
     
-    if (childAge < 3 || childAge > 18) {
+    if (childAge < 1 || childAge > 6) {
       return NextResponse.json({
         success: false,
-        error: '年齢は3歳から18歳までで入力してください'
+        error: '理解度レベルは1から6までで選択してください'
       }, { status: 400 });
     }
     

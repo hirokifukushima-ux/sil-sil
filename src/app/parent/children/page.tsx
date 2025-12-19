@@ -8,12 +8,22 @@ import { clearUserType, requireAuth, isParentUser } from "../../../lib/auth";
 interface ChildAccount {
   id: string;
   displayName: string;
-  childAge: number;
+  childAge: number; // 実際は理解度レベル（1-6）
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string;
   articlesRead?: number;
 }
+
+// 理解度レベルの定義
+const COMPREHENSION_LEVELS = {
+  1: '超簡単・ひらがな多め',
+  2: '小学校低学年レベル',
+  3: '小学校中学年レベル',
+  4: '小学校高学年レベル',
+  5: '中学生レベル',
+  6: '高校生レベル'
+} as const;
 
 interface Invitation {
   id: string;
@@ -181,9 +191,9 @@ export default function ChildrenManagement() {
       return;
     }
 
-    const age = parseInt(editAge);
-    if (isNaN(age) || age < 3 || age > 18) {
-      alert('年齢は3歳から18歳までで入力してください');
+    const level = parseInt(editAge);
+    if (isNaN(level) || level < 1 || level > 6) {
+      alert('理解度レベルは1から6までで選択してください');
       return;
     }
 
@@ -197,7 +207,7 @@ export default function ChildrenManagement() {
         },
         body: JSON.stringify({
           displayName: editName,
-          childAge: age
+          childAge: level
         })
       });
 
@@ -359,7 +369,9 @@ export default function ChildrenManagement() {
                         <div className="text-3xl">🧒</div>
                         <div>
                           <h3 className="font-bold text-gray-800">{child.displayName}</h3>
-                          <p className="text-sm text-gray-600">{child.childAge}歳</p>
+                          <p className="text-sm text-gray-600">
+                            {COMPREHENSION_LEVELS[child.childAge as keyof typeof COMPREHENSION_LEVELS] || `レベル${child.childAge}`}
+                          </p>
                         </div>
                       </div>
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -553,18 +565,23 @@ export default function ChildrenManagement() {
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  年齢
+                  理解度レベル
                 </label>
                 <select
                   value={newChildAge}
                   onChange={(e) => setNewChildAge(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="">年齢を選択</option>
-                  {Array.from({ length: 16 }, (_, i) => i + 3).map(age => (
-                    <option key={age} value={age}>{age}歳</option>
+                  <option value="">レベルを選択</option>
+                  {(Object.keys(COMPREHENSION_LEVELS) as Array<keyof typeof COMPREHENSION_LEVELS>).map(level => (
+                    <option key={level} value={level}>
+                      {level}. {COMPREHENSION_LEVELS[level]}
+                    </option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  💡 子どもの実年齢ではなく、ニュースの理解度レベルを選択してください
+                </p>
               </div>
               
               {createMethod === 'email' && (
@@ -642,18 +659,21 @@ export default function ChildrenManagement() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  年齢 <span className="text-red-500">*</span>
+                  理解度レベル <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="number"
+                <select
                   value={editAge}
                   onChange={(e) => setEditAge(e.target.value)}
-                  placeholder="例: 8"
-                  min="3"
-                  max="18"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <p className="text-xs text-gray-500 mt-1">3歳から18歳まで</p>
+                >
+                  <option value="">レベルを選択</option>
+                  {(Object.keys(COMPREHENSION_LEVELS) as Array<keyof typeof COMPREHENSION_LEVELS>).map(level => (
+                    <option key={level} value={level}>
+                      {level}. {COMPREHENSION_LEVELS[level]}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">子どもの実年齢ではなく、ニュースの理解度レベルを選択</p>
               </div>
             </div>
 
